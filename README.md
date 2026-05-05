@@ -7,6 +7,8 @@ An advanced, free, and open-source tool for creating **interactive 360° Virtual
 
 Ideal for real estate agents, photographers, architects, or anyone looking to showcase spaces in 360 degrees professionally without recurring costs from third-party platforms.
 
+<img width="1150" height="680" alt="Free 360 panoramic viewer for virtual tours in html" src="https://github.com/user-attachments/assets/31f4bd41-8f11-4297-b0dc-23afaa44155d" />
+
 ## ✨ Key Features
 
 * **🚀 Zero Installation:** Download the HTML file and open it in any modern browser. All image processing is done locally.
