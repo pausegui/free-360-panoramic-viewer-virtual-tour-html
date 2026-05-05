@@ -25,7 +25,7 @@ Ideal for real estate agents, photographers, architects, or anyone looking to sh
 
 You can use the tool directly from your browser without downloading anything thanks to GitHub Pages:
 
-👉 **[View and use 360° Tour Builder Pro online]([#](https://pausegui.github.io/free-360-panoramic-viewer-virtual-tour-html/))**
+👉 **[View and use 360° Tour Builder Pro online](https://pausegui.github.io/free-360-panoramic-viewer-virtual-tour-html/)**
 
 ## 🛠️ How to Use (Local)
 
