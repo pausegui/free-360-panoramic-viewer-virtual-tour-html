@@ -26,7 +26,7 @@ SOFTWARE.
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>360° Tour Builder Pro</title>
+    <title>Constructor de Tours 360° Pro</title>
     
     <!-- Tailwind & Fuentes -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -60,12 +60,12 @@ SOFTWARE.
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
 
-        /* Puntos en el minimapa */
+        /* Points on the minimap */
         @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(99,102,241,0.7); } 70% { box-shadow: 0 0 0 10px rgba(99,102,241,0); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); } }
         .marker-active { animation: pulse-ring 2s infinite; background: #6366f1 !important; border-color: #fff !important; z-index: 20; }
         .marker-inactive { background: #3f3f46; border-color: #a1a1aa; opacity: 0.9; z-index: 10; }
         
-        /* CONO DE RADAR */
+        /* RADAR CONE */
         .radar-cone {
             position: absolute;
             bottom: 50%; left: 50%;
@@ -85,18 +85,18 @@ SOFTWARE.
             background: repeating-conic-gradient(from 0deg, #27272a 0deg, #27272a 10deg, #3f3f46 10deg, #3f3f46 20deg);
         }
 
-        /* Diseño de Hotspots */
+        /* Hotspot design */
         .custom-hotspot-container { width: 60px; height: 60px; margin-left: -30px; margin-top: -30px; z-index: 20; }
         .info-hotspot-container { width: 36px; height: 36px; margin-left: -18px; margin-top: -18px; z-index: 20; }
         
-        /* Cursor custom para añadir hotspots */
+        /* Custom cursor for adding hotspots */
         .cursor-add-hotspot { cursor: crosshair !important; }
         .pulse-border { animation: border-pulse 1.5s infinite; }
         @keyframes border-pulse { 0% { box-shadow: inset 0 0 0 2px rgba(14, 165, 233, 0.2); } 50% { box-shadow: inset 0 0 0 4px rgba(14, 165, 233, 0.8); } 100% { box-shadow: inset 0 0 0 2px rgba(14, 165, 233, 0.2); } }
 
 
         /* Marco panorámico: solo escritorio.
-           En móvil / tablet se desactiva visualmente sin tocar la lógica JS. */
+           En móvil / tablet se desactiva visualmente sin cambiar la lógica JS. */
         @media (max-width: 1180px), (pointer: coarse) {
             #panorama.panorama-frame-active {
                 position: absolute !important;
@@ -121,54 +121,47 @@ SOFTWARE.
 </head>
 <body class="h-screen w-screen flex relative">
 
-    <!-- DRAG & DROP OVERLAY GLOBALES -->
+    <!-- SUPERPOSICIÓN GLOBAL DE ARRASTRAR Y SOLTAR -->
     <div id="drag-overlay" class="fixed inset-0 z-[200] bg-indigo-600/90 backdrop-blur-sm hidden flex-col items-center justify-center pointer-events-none transition-opacity">
         <svg class="w-24 h-24 text-white mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
         <h2 class="text-4xl font-bold text-white text-center mb-2">Suelta la imagen aquí</h2>
-        <p class="text-indigo-200 text-lg">Se comprimirá y añadirá automáticamente al Tour</p>
+        <p class="text-indigo-200 text-lg">Se comprimirá y se añadirá automáticamente al tour</p>
     </div>
 
-    <!-- OVERLAYS GLOBALES -->
+    <!-- SUPERPOSICIONES GLOBALES -->
     <div id="export-overlay" class="fixed inset-0 bg-black/90 z-[100] hidden flex-col items-center justify-center backdrop-blur-sm">
         <div class="w-16 h-16 border-4 border-zinc-700 border-t-indigo-500 rounded-full animate-spin mb-6"></div>
-        <h2 class="text-2xl font-bold text-white mb-2">Procesando Archivos...</h2>
-        <p id="export-status-text" class="text-zinc-400">Por favor, no cierres la ventana. Puede tardar un momento.</p>
+        <h2 class="text-2xl font-bold text-white mb-2">Procesando archivos...</h2>
+        <p id="export-status-text" class="text-zinc-400">No cierres la ventana. Esto puede tardar un momento.</p>
     </div>
 
     <!-- MODAL DE EXPORTACIÓN -->
     <div id="export-modal" class="fixed inset-0 bg-black/80 z-[80] hidden items-center justify-center backdrop-blur-sm">
         <div class="bg-zinc-900 border border-white/10 p-6 rounded-2xl w-full max-w-md shadow-2xl relative mx-4">
-            <h2 class="text-lg font-bold text-white mb-4">Opciones de Guardado</h2>
+            <h2 class="text-lg font-bold text-white mb-4">Opciones de guardado</h2>
             <div class="space-y-4">
                 <div>
-                    <label class="text-xs text-zinc-400 uppercase tracking-wider block mb-2">Tipo de Archivo</label>
+                    <label class="text-xs text-zinc-400 uppercase tracking-wider block mb-2">Tipo de archivo</label>
                     <div class="space-y-2 max-h-[40vh] overflow-y-auto pr-2">
                         <label class="flex items-center gap-3 bg-zinc-800/50 p-3 rounded-lg border border-white/5 cursor-pointer hover:border-indigo-500/50">
                             <input type="radio" name="exportType" value="player" checked class="text-indigo-500 focus:ring-indigo-500 mt-1 self-start">
                             <div>
-                                <p class="text-sm text-white font-medium">1. Archivo Único HTML (Cliente)</p>
-                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Tour limpio. Todo en 1 archivo.</p>
-                            </div>
-                        </label>
-                        <label class="flex items-center gap-3 bg-emerald-900/20 p-3 rounded-lg border border-emerald-500/20 cursor-pointer hover:border-emerald-500/50">
-                            <input type="radio" name="exportType" value="zip" class="text-emerald-500 focus:ring-emerald-500 mt-1 self-start">
-                            <div>
-                                <p class="text-sm text-emerald-400 font-medium">2. Paquete ZIP (Para Servidor Web)</p>
-                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Separa las fotos en una carpeta. Evita bloqueos.</p>
+                                <p class="text-sm text-white font-medium">1. Archivo HTML único (cliente)</p>
+                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Tour limpio. Todo en 1 archivo (sin barra lateral - Para cliente)</p>
                             </div>
                         </label>
                         <label class="flex items-center gap-3 bg-indigo-900/20 p-3 rounded-lg border border-indigo-500/20 cursor-pointer hover:border-indigo-500/50">
-                            <input type="radio" name="exportType" value="project" class="text-indigo-500 focus:ring-indigo-500 mt-1 self-start">
+                            <input type="radio" name="exportType" value="admin" class="text-indigo-500 focus:ring-indigo-500 mt-1 self-start">
                             <div>
-                                <p class="text-sm text-indigo-400 font-medium">3. Proyecto Editable (Para ti)</p>
-                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Guarda tu sesión para seguir editando mañana.</p>
+                                <p class="text-sm text-indigo-400 font-medium">2. Archivo HTML único</p>
+                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Tour completo. Todo en 1 archivo - Para administrador (con barra lateral de edición)</p>
                             </div>
                         </label>
                     </div>
                 </div>
                 <label class="flex items-center gap-2 mt-4 cursor-pointer">
                     <input type="checkbox" id="export-logo" checked class="rounded border-zinc-700 text-indigo-500 focus:ring-indigo-500">
-                    <span class="text-sm text-zinc-300">Incluir Logo personalizado</span>
+                    <span class="text-sm text-zinc-300">Incluir logotipo personalizado</span>
                 </label>
             </div>
             <div class="flex gap-3 mt-6">
@@ -178,11 +171,11 @@ SOFTWARE.
         </div>
     </div>
 
-    <!-- MODAL CALIBRACIÓN RADAR MINIMALISTA -->
+    <!-- MODAL MINIMALISTA DE CALIBRACIÓN DEL RADAR -->
     <div id="calibration-modal" class="fixed inset-0 bg-black/60 z-[90] hidden items-center justify-center backdrop-blur-sm">
         <div class="bg-zinc-900 border border-white/10 p-5 rounded-2xl w-72 shadow-2xl relative text-center">
-            <h2 class="text-base font-bold text-white mb-1 flex justify-center items-center gap-2">Punto de Inicio</h2>
-            <p class="text-xs text-zinc-400 mb-5 leading-tight">Mueve la vista 360º al punto de inicio deseado y gira la flecha roja del radar hasta apuntar donde estás mirando.</p>
+            <h2 class="text-base font-bold text-white mb-1 flex justify-center items-center gap-2">Punto de inicio</h2>
+            <p class="text-xs text-zinc-400 mb-5 leading-tight">Mueve la vista 360º al punto de inicio deseado y gira la flecha roja del radar hasta que apunte hacia donde estás mirando.</p>
             
             <div class="relative w-32 h-32 mx-auto rounded-full border-[6px] border-zinc-800 compass-bg shadow-inner flex items-center justify-center mb-6 cursor-crosshair" id="calib-dial">
                 <div class="absolute inset-0 rounded-full" id="calib-touch-area"></div>
@@ -194,7 +187,7 @@ SOFTWARE.
 
             <div class="flex gap-2">
                 <button onclick="document.getElementById('calibration-modal').classList.replace('flex','hidden')" class="flex-1 py-2 rounded-lg border border-white/10 text-zinc-300 hover:bg-white/5 text-xs font-medium transition-colors">Cancelar</button>
-                <button id="btn-confirm-calib" class="flex-1 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 text-xs font-bold transition-colors">Fijar Inicio</button>
+                <button id="btn-confirm-calib" class="flex-1 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 text-xs font-bold transition-colors">Establecer inicio</button>
             </div>
         </div>
     </div>
@@ -205,7 +198,7 @@ SOFTWARE.
             <div class="p-5 border-b border-white/5 flex items-center justify-between bg-zinc-800/50">
                 <h2 class="text-xl font-bold text-white flex items-center gap-3">
                     <svg class="w-6 h-6 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    Guía de Herramientas - Tour Builder Pro
+                    Guía de la herramienta - Constructor de Tours Pro
                 </h2>
                 <button onclick="document.getElementById('info-modal').classList.replace('flex','hidden')" class="text-zinc-400 hover:text-white p-2 transition-colors">
                     <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -214,60 +207,60 @@ SOFTWARE.
             <div class="flex-grow overflow-y-auto p-6 sm:p-8 space-y-6 text-sm leading-relaxed text-zinc-300">
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <!-- Sección 1 -->
+                    <!-- Section 1 -->
                     <div class="bg-white/5 p-5 rounded-xl border border-white/5">
                         <h3 class="text-indigo-400 font-bold uppercase tracking-widest text-xs flex items-center gap-2 mb-3">
-                            Panel Lateral (Identidad y Plano)
+                            Panel lateral (identidad y plano)
                         </h3>
                         <ul class="space-y-3 text-[13px]">
-                            <li><strong class="text-white block">Logo y Título Global:</strong> Define la marca de tu tour virtual. Se mostrarán siempre en la esquina inferior izquierda. Puedes cambiar el tamaño y color del texto.</li>
-                            <li><strong class="text-white block">Color Punteros (Hotspots):</strong> Permite personalizar el color de las flechas de navegación para que encajen con tu identidad corporativa.</li>
-                            <li><strong class="text-white block">Plano / Minimapa:</strong> Sube una imagen en 2D de la planta arquitectónica. Activa un minimapa interactivo donde podrás situar las fotos.</li>
-                            <li><strong class="text-white block">Escenas 360°:</strong> Sube tus fotos panorámicas equirectangulares (proporción 2:1). El sistema las optimiza en formato 4K automáticamente para un mejor rendimiento.</li>
+                            <li><strong class="text-white block">Logotipo y título global:</strong> Define la imagen de marca de tu tour virtual. Siempre se mostrará en la esquina inferior izquierda. Puedes cambiar el tamaño y el color del texto.</li>
+                            <li><strong class="text-white block">Color del puntero (hotspots):</strong> Permite personalizar el color de las flechas de navegación para que coincidan con tu identidad corporativa.</li>
+                            <li><strong class="text-white block">Plano / minimapa:</strong> Sube una imagen 2D del plano arquitectónico. Permite crear un minimapa interactivo donde puedes colocar las fotos.</li>
+                            <li><strong class="text-white block">Escenas 360°:</strong> Sube tus fotos panorámicas equirectangulares (relación 2:1). El sistema las optimiza automáticamente en formato 4K para mejorar el rendimiento.</li>
                         </ul>
                     </div>
 
-                    <!-- Sección 2 -->
+                    <!-- Section 2 -->
                     <div class="bg-white/5 p-5 rounded-xl border border-white/5">
                         <h3 class="text-sky-400 font-bold uppercase tracking-widest text-xs flex items-center gap-2 mb-3">
-                            Panel de Edición (Miniaturas)
+                            Panel de edición (miniaturas)
                         </h3>
                         <ul class="space-y-3 text-[13px]">
-                            <li><strong class="text-white block">Añadir Subtítulo e Información:</strong> Selecciona una escena en la lista y añádele un subtítulo y un bloque de texto descriptivo (icono "i").</li>
-                            <li><strong class="text-white block">Eliminar Escenas:</strong> Usa el icono de papelera junto a cada escena. Nota: Al eliminar, asegúrate de actualizar las flechas que apuntaran hacia ahí.</li>
-                            <li><strong class="text-white block">Guardar y Exportar:</strong> Puedes guardar un archivo HTML único (ideal para enviar rápido por WhatsApp o email) o un archivo ZIP completo (mejor para subir a servidores web profesionales).</li>
+                            <li><strong class="text-white block">Añadir subtítulo e información:</strong> Selecciona una escena en la lista y añade un subtítulo y un bloque de texto descriptivo (icono "i").</li>
+                            <li><strong class="text-white block">Eliminar escenas:</strong> Usa el icono de papelera junto a cada escena. Nota: al eliminar, asegúrate de actualizar cualquier flecha que apuntara hacia ella.</li>
+                            <li><strong class="text-white block">Guardar y exportar:</strong> Puedes guardar un único archivo HTML (ideal para enviarlo rápidamente por WhatsApp o correo electrónico) o un archivo ZIP completo (mejor para subirlo a servidores web profesionales).</li>
                         </ul>
                     </div>
 
-                    <!-- Sección 3 -->
+                    <!-- Section 3 -->
                     <div class="bg-white/5 p-5 rounded-xl border border-white/5 md:col-span-2">
                         <h3 class="text-emerald-400 font-bold uppercase tracking-widest text-xs flex items-center gap-2 mb-3">
-                            Herramientas del Minimapa (Panel Ubicación)
+                            Herramientas del minimapa (panel de ubicación)
                         </h3>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                                <p class="text-indigo-300 font-bold text-xs mb-1 flex items-center gap-1">🖼️ Botón Galería</p>
-                                <p class="text-[12px] leading-snug">Despliega una barra inferior con todas las imágenes en miniatura, permitiendo al usuario final saltar rápidamente de una habitación a otra.</p>
+                                <p class="text-indigo-300 font-bold text-xs mb-1 flex items-center gap-1">🖼️ Botón de galería</p>
+                                <p class="text-[12px] leading-snug">Muestra una barra inferior con todas las imágenes en miniatura, lo que permite al usuario final saltar rápidamente de una estancia a otra.</p>
                             </div>
                             <div>
-                                <p class="text-sky-400 font-bold text-xs mb-1 flex items-center gap-1">🔗 Añadir Flecha (Hotspot)</p>
-                                <p class="text-[12px] leading-snug">Conecta las imágenes entre sí. Haz clic, elige el destino, si procede renombra el nombre asignadao a la flecha (Ejemplo: Salón) y marca con el ratón en pantalla el lugar donde irá la Fleda de Transión. Opcionalmente, se puede pinchar en Ajuste Avanzado que activa la opción de fijar vista de entrada al pinchar en la Flecha.</p>
+                                <p class="text-sky-400 font-bold text-xs mb-1 flex items-center gap-1">🔗 Añadir flecha (hotspot)</p>
+                                <p class="text-[12px] leading-snug">Conecta las imágenes entre sí. Haz clic, elige el destino, cambia opcionalmente el nombre asignado a la flecha (ejemplo: Salón) y usa el ratón para marcar en la pantalla dónde irá la flecha de transición. Opcionalmente, puedes hacer clic en Configuración avanzada para activar la opción de establecer la vista de entrada al hacer clic en la flecha.</p>
                             </div>
                             <div>
-                                <p class="text-emerald-400 font-bold text-xs mb-1 flex items-center gap-1">ℹ️ Info Hotspot</p>
-                                <p class="text-[12px] leading-snug">Sitúa marcadores de información (icono verde) sobre objetos (una ventana, un electrodoméstico) para describir calidades o características importantes. Añade texto y después, marca con el ratón en pantalla el lugar donde irá el punto de información</p>
+                                <p class="text-emerald-400 font-bold text-xs mb-1 flex items-center gap-1">ℹ️ Hotspot de información</p>
+                                <p class="text-[12px] leading-snug">Coloca marcadores de información (icono verde) sobre objetos (una ventana, un electrodoméstico) para describir cualidades o características importantes. Añade texto y luego usa el ratón para marcar en la pantalla dónde irá el punto de información</p>
                             </div>
                             <div>
-                                <p class="text-amber-400 font-bold text-xs mb-1 flex items-center gap-1">📍 Fijar Punto de Inicio y Radar</p>
-                                <p class="text-[12px] leading-snug">Ajusta la vista inicial de la foto al entrar en ella, y calibra hacia dónde mira la flecha roja en el plano del minimapa.</p>
+                                <p class="text-amber-400 font-bold text-xs mb-1 flex items-center gap-1">📍 Establecer punto de inicio y radar</p>
+                                <p class="text-[12px] leading-snug">Ajusta la vista inicial de la foto al entrar en ella y calibra hacia dónde apunta la flecha roja en el plano del minimapa.</p>
                             </div>
                             <div>
-                                <p class="text-sky-500 font-bold text-xs mb-1 flex items-center gap-1">🔄 Lista de Transiciones</p>
-                                <p class="text-[12px] leading-snug">Consulta, gestiona y elimina las flechas de navegación creadas en la escena actual.</p>
+                                <p class="text-sky-500 font-bold text-xs mb-1 flex items-center gap-1">🔄 Lista de transiciones</p>
+                                <p class="text-[12px] leading-snug">Visualiza, gestiona y elimina las flechas de navegación creadas en la escena actual.</p>
                             </div>
                             <div>
-                                <p class="text-white font-bold text-xs mb-1 flex items-center gap-1">🔒 Bloquear Mapa</p>
-                                <p class="text-[12px] leading-snug">Fija los puntos (marcadores) en el minimapa para evitar moverlos por error al hacer clic mientras navegas.</p>
+                                <p class="text-white font-bold text-xs mb-1 flex items-center gap-1">🔒 Bloquear mapa</p>
+                                <p class="text-[12px] leading-snug">Bloquea los puntos (marcadores) del minimapa para evitar moverlos por error al hacer clic mientras navegas.</p>
                             </div>
                         </div>
                     </div>
@@ -287,14 +280,14 @@ SOFTWARE.
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
 
-        <!-- Controles de Presentación -->
+        <!-- Controles de presentación -->
         <div id="player-controls" class="absolute top-4 left-4 sm:top-6 sm:left-6 z-30 flex flex-col gap-2 hidden"></div>
 
-        <!-- PANEL FLOTANTE MODO HOTSPOT (Añadir flecha) -->
+        <!-- PANEL FLOTANTE DE MODO HOTSPOT (añadir flecha) -->
         <div id="hotspot-panel" class="absolute top-6 left-1/2 -translate-x-1/2 z-[60] bg-zinc-900/95 backdrop-blur-md border border-sky-500/50 p-4 rounded-2xl w-full max-w-md shadow-2xl hidden flex-col transition-all duration-300">
             <div class="flex items-center gap-2 mb-3 bg-sky-500/10 p-2 rounded-lg border border-sky-500/20">
                 <div class="w-2.5 h-2.5 bg-sky-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.8)]"></div>
-                <h3 class="text-sm font-bold text-sky-400">Selecciona el destino y haz CLIC en la foto 360</h3>
+                <h3 class="text-sm font-bold text-sky-400">Selecciona el destino y HAZ CLIC en la foto 360</h3>
             </div>
             
             <div class="flex gap-3 mb-3">
@@ -303,15 +296,15 @@ SOFTWARE.
                     <select id="hotspot-target" class="w-full bg-black/50 border border-white/10 text-white rounded-lg px-2 py-2 text-xs focus:border-sky-500 outline-none cursor-pointer"></select>
                 </div>
                 <div class="flex-1">
-                    <label class="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Texto (Opcional)</label>
+                    <label class="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Texto (opcional)</label>
                     <input type="text" id="hotspot-text" class="w-full bg-black/50 border border-white/10 text-white rounded-lg px-2 py-2 text-xs focus:border-sky-500 outline-none placeholder:text-zinc-600" data-auto="true">
                 </div>
             </div>
 
             <div class="flex items-center justify-between bg-black/40 border border-white/5 rounded-xl p-3 mb-3">
                 <div>
-                    <p class="text-[11px] font-bold text-zinc-200">Ajuste Avanzado</p>
-                    <p class="text-[9px] text-zinc-500 mt-0.5">Capturar la vista exacta de aterrizaje</p>
+                    <p class="text-[11px] font-bold text-zinc-200">Configuración avanzada</p>
+                    <p class="text-[9px] text-zinc-500 mt-0.5">Captura la vista exacta de llegada</p>
                 </div>
                 <label class="flex items-center cursor-pointer group">
                     <div class="relative flex items-center">
@@ -322,36 +315,36 @@ SOFTWARE.
                 </label>
             </div>
 
-            <button id="btn-cancel-hotspot" class="w-full py-2 rounded-xl border border-white/10 text-zinc-300 hover:bg-white/5 text-xs font-medium transition-colors">Cancelar Módulo</button>
+            <button id="btn-cancel-hotspot" class="w-full py-2 rounded-xl border border-white/10 text-zinc-300 hover:bg-white/5 text-xs font-medium transition-colors">Cancelar módulo</button>
         </div>
 
-        <!-- PANEL FLOTANTE MODO INFO HOTSPOT -->
+        <!-- PANEL FLOTANTE DE HOTSPOT DE INFORMACIÓN -->
         <div id="info-hotspot-panel" class="absolute top-6 left-1/2 -translate-x-1/2 z-[60] bg-zinc-900/95 backdrop-blur-md border border-emerald-500/50 p-4 rounded-2xl w-full max-w-md shadow-2xl hidden flex-col">
             <div class="flex items-center gap-2 mb-3 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
                 <div class="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]"></div>
-                <h3 class="text-sm font-bold text-emerald-400">Escribe el texto y haz CLIC en la foto 360</h3>
+                <h3 class="text-sm font-bold text-emerald-400">Introduce el texto y HAZ CLIC en la foto 360</h3>
             </div>
             <div class="mb-3">
                 <label class="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Texto informativo</label>
-                <textarea id="info-hotspot-text" rows="2" placeholder="Ej: Esta es la cocina, reformada en 2024..." class="w-full bg-black/50 border border-white/10 text-white rounded-lg px-2 py-2 text-xs focus:border-emerald-500 outline-none resize-none placeholder:text-zinc-600"></textarea>
+                <textarea id="info-hotspot-text" rows="2" placeholder="Ej.: Esta es la cocina, renovada en 2024..." class="w-full bg-black/50 border border-white/10 text-white rounded-lg px-2 py-2 text-xs focus:border-emerald-500 outline-none resize-none placeholder:text-zinc-600"></textarea>
             </div>
-            <button id="btn-cancel-info-hotspot" class="w-full py-2 rounded-xl border border-white/10 text-zinc-300 hover:bg-white/5 text-xs font-medium transition-colors">Cancelar Módulo</button>
+            <button id="btn-cancel-info-hotspot" class="w-full py-2 rounded-xl border border-white/10 text-zinc-300 hover:bg-white/5 text-xs font-medium transition-colors">Cancelar módulo</button>
         </div>
 
         <!-- PANEL FLOTANTE PASO 2: VISTA PERSONALIZADA -->
         <div id="target-view-panel" class="absolute top-6 left-1/2 -translate-x-1/2 z-[60] bg-zinc-900/95 backdrop-blur-md border border-amber-500/50 p-4 rounded-2xl w-full max-w-sm shadow-2xl hidden flex-col transition-all duration-300 text-center">
             <div class="flex items-center justify-center gap-2 mb-3 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20">
                 <div class="w-2.5 h-2.5 bg-amber-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]"></div>
-                <h3 class="text-sm font-bold text-amber-400">Paso 2: Ajusta la vista de aterrizaje</h3>
+                <h3 class="text-sm font-bold text-amber-400">Paso 2: Ajusta la vista de llegada</h3>
             </div>
-            <p class="text-[11px] text-zinc-300 mb-4 leading-snug">Mueve la cámara libremente para encuadrar lo que verá el usuario al entrar y pulsa <strong>Aceptar Vista</strong>.</p>
+            <p class="text-[11px] text-zinc-300 mb-4 leading-snug">Mueve la cámara libremente para encuadrar lo que verá el usuario al entrar y luego pulsa <strong>Aceptar vista</strong>.</p>
             <div class="flex gap-3">
-                <button id="btn-cancel-target-view" class="flex-1 py-2 rounded-xl border border-white/10 text-zinc-300 hover:bg-white/5 text-xs font-medium transition-colors">Cancelar Acción</button>
-                <button id="btn-confirm-target-view" class="flex-1 py-2 rounded-xl bg-amber-600 text-white hover:bg-amber-500 transition-colors text-xs font-bold shadow-lg shadow-amber-500/20">Aceptar Vista</button>
+                <button id="btn-cancel-target-view" class="flex-1 py-2 rounded-xl border border-white/10 text-zinc-300 hover:bg-white/5 text-xs font-medium transition-colors">Cancelar acción</button>
+                <button id="btn-confirm-target-view" class="flex-1 py-2 rounded-xl bg-amber-600 text-white hover:bg-amber-500 transition-colors text-xs font-bold shadow-lg shadow-amber-500/20">Aceptar vista</button>
             </div>
         </div>
 
-        <!-- INDICADOR CENTRAL PASO 2 (Punto de mira) -->
+        <!-- INDICADOR CENTRAL PASO 2 (punto de mira) -->
         <div id="target-view-indicator" class="absolute inset-0 pointer-events-none hidden flex-col items-center justify-center z-[50]">
             <div class="w-16 h-16 border-2 border-amber-500 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.4)] backdrop-blur-sm bg-black/10 relative">
                 <div class="w-1.5 h-1.5 bg-amber-400 rounded-full"></div>
@@ -361,7 +354,7 @@ SOFTWARE.
             </div>
         </div>
 
-        <!-- WIDGET BRANDING -->
+        <!-- WIDGET DE MARCA -->
         <div id="branding-widget" class="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-20 flex items-center gap-3 pointer-events-none transition-opacity duration-300 opacity-0 max-w-[60vw] md:max-w-md">
             <img id="brand-logo" src="" class="max-w-[40px] max-h-[40px] object-contain drop-shadow-md hidden shrink-0" />
             <div class="flex flex-col drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] overflow-visible">
@@ -384,8 +377,8 @@ SOFTWARE.
             <div class="w-16 h-16 sm:w-20 sm:h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-6 shadow-2xl border border-white/5">
                 <svg class="w-8 h-8 sm:w-10 sm:h-10 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
             </div>
-            <h2 class="text-lg sm:text-xl text-white font-medium mb-2">Comienza tu Tour Virtual</h2>
-            <p class="text-zinc-500 text-xs sm:text-sm">Arrastra tus fotos 360 aquí, o usa el menú lateral.</p>
+            <h2 class="text-lg sm:text-xl text-white font-medium mb-2">Empieza tu tour virtual</h2>
+            <p class="text-zinc-500 text-xs sm:text-sm">Arrastra tus fotos 360 aquí o usa el menú lateral.</p>
         </div>
 
         <div id="panorama" class="absolute inset-0 z-0 transition-all duration-300"></div>
@@ -395,7 +388,7 @@ SOFTWARE.
             <div id="thumbnails-list" class="flex gap-3 overflow-x-auto pb-1" style="scrollbar-width:thin;"></div>
         </div>
 
-        <!-- MINIMAP WIDGET -->
+        <!-- WIDGET DE MINIMAPA -->
         <div id="minimap-widget" class="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 w-36 h-36 sm:w-64 sm:h-64 md:w-80 md:h-72 bg-zinc-900/90 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl hidden flex-col overflow-visible z-20 hover:scale-[1.02] transition-transform">
             
             <div class="bg-black/80 px-2 py-2 text-[10px] font-semibold text-zinc-400 flex justify-between items-center shrink-0 rounded-t-xl z-30 border-b border-white/10">
@@ -404,9 +397,9 @@ SOFTWARE.
                 
                 <div class="flex items-center gap-1.5">
                     <button id="btn-show-thumbnails" class="p-1.5 bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Galería de estancias"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg></button>
-                    <button id="btn-open-hotspot" class="p-1.5 bg-sky-500/20 text-sky-400 hover:bg-sky-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Añadir Flecha (Hotspot)"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg></button>
-                    <button id="btn-open-info-hotspot" class="p-1.5 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Añadir Punto de Información"><span class="font-bold text-sm leading-none w-4 h-4 flex items-center justify-center">i</span></button>
-                    <button id="btn-open-calib" class="p-1.5 bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Fijar Punto de Inicio y Radar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
+                    <button id="btn-open-hotspot" class="p-1.5 bg-sky-500/20 text-sky-400 hover:bg-sky-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Añadir flecha (hotspot)"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg></button>
+                    <button id="btn-open-info-hotspot" class="p-1.5 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Añadir punto de información"><span class="font-bold text-sm leading-none w-4 h-4 flex items-center justify-center">i</span></button>
+                    <button id="btn-open-calib" class="p-1.5 bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Establecer punto de inicio y radar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
                     <button id="btn-toggle-transitions" class="p-1.5 bg-sky-500/20 text-sky-400 hover:bg-sky-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Ver elementos activos"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg></button>
                     <button id="btn-lock-map" class="p-1.5 text-emerald-400 hover:bg-white/10 rounded flex items-center justify-center transition-colors" title="Bloquear edición de puntos">
                         <svg id="map-icon-unlocked" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
@@ -415,7 +408,7 @@ SOFTWARE.
                 </div>
             </div>
 
-            <!-- Área del minimapa con Transform para Drag/Zoom -->
+            <!-- Área del minimapa con transformación para arrastrar/zoom -->
             <div id="minimap-container" class="relative flex-grow overflow-hidden rounded-b-xl group bg-black/40">
                 <div id="minimap-transform" class="absolute w-full h-full transform-gpu transition-none origin-center cursor-crosshair" style="transform: scale(1) translate(0px, 0px);">
                     <img id="minimap-img" src="" class="w-full h-full object-contain pointer-events-none opacity-90 group-hover:opacity-100 transition-opacity" />
@@ -423,7 +416,7 @@ SOFTWARE.
                 </div>
             </div>
 
-            <!-- PANEL ELEMENTOS ACTIVOS (Antes panel transiciones) -->
+            <!-- PANEL DE ELEMENTOS ACTIVOS (antes panel de transiciones) -->
             <div id="transitions-panel" class="hidden border-t border-white/10 bg-zinc-900/95 backdrop-blur-md max-h-40 overflow-y-auto">
                 <div class="px-2 py-1.5 flex items-center justify-between bg-black/60 border-b border-white/5 shrink-0">
                     <span class="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Elementos interactivos</span>
@@ -434,19 +427,19 @@ SOFTWARE.
         </div>
     </main>
 
-    <!-- SIDEBAR DERECHO -->
+    <!-- BARRA LATERAL DERECHA -->
     <aside id="sidebar" class="w-80 h-full bg-zinc-900 border-l border-white/10 flex flex-col shrink-0 z-40 sidebar-transition translate-x-full absolute right-0 md:relative" style="margin-right: -20rem;">
         
         <div class="p-5 border-b border-white/5 flex items-center justify-between bg-zinc-900/50 shrink-0">
             <div>
                 <h1 class="font-bold text-white tracking-wide flex items-center gap-2 text-sm">
                     <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                    Tour Builder Pro
+                    Constructor de Tours Pro
                 </h1>
             </div>
             <div class="flex items-center gap-1">
-                <button id="btn-show-info" class="p-2 rounded-lg hover:bg-zinc-800 transition-colors text-zinc-400 hover:text-sky-400" title="Información y Ayuda"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
-                <button id="btn-lock" class="p-2 rounded-lg hover:bg-zinc-800 transition-colors text-emerald-400" title="Modo Previsualización (Oculta Editor)">
+                <button id="btn-show-info" class="p-2 rounded-lg hover:bg-zinc-800 transition-colors text-zinc-400 hover:text-sky-400" title="Información y ayuda"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
+                <button id="btn-lock" class="p-2 rounded-lg hover:bg-zinc-800 transition-colors text-emerald-400" title="Modo vista previa (ocultar editor)">
                     <svg id="icon-unlocked" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
                     <svg id="icon-locked" class="w-5 h-5 hidden text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                 </button>
@@ -458,36 +451,36 @@ SOFTWARE.
             
             <div class="bg-zinc-800/30 border border-white/5 rounded-xl overflow-hidden">
                 <button class="w-full flex justify-between items-center p-3 bg-zinc-800/50 hover:bg-zinc-800 transition-colors" onclick="toggleAccordion('acc-identity', 'icon-identity')">
-                    <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">A. Identidad Visual</h3>
+                    <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">A. Identidad visual</h3>
                     <svg id="icon-identity" class="w-4 h-4 text-zinc-500 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                 </button>
                 <div id="acc-identity" class="hidden p-4 space-y-4 border-t border-white/5">
                     <div class="flex items-center justify-between bg-zinc-800/50 p-2 rounded-lg border border-white/5">
-                        <span class="text-xs text-zinc-400 ml-2">Logo (Max 40x40)</span>
+                        <span class="text-xs text-zinc-400 ml-2">Logotipo (máx. 40x40)</span>
                         <button class="bg-zinc-700 hover:bg-zinc-600 text-white text-[10px] px-3 py-1.5 rounded transition-colors" onclick="document.getElementById('logo-input').click()">Subir</button>
                         <input type="file" id="logo-input" accept="image/png, image/jpeg, image/svg+xml" class="hidden">
                     </div>
                     <div class="space-y-2">
-                        <input type="text" id="input-title" placeholder="Título Principal" class="w-full bg-zinc-800/50 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none">
+                        <input type="text" id="input-title" placeholder="Título principal" class="w-full bg-zinc-800/50 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none">
                         <div class="flex gap-2">
                             <input type="color" id="input-color" value="#ffffff" class="h-9 w-12 rounded bg-zinc-800/50 border border-white/5 cursor-pointer">
                             <select id="input-size" class="flex-grow bg-zinc-800/50 border border-white/5 rounded-lg px-2 text-sm text-white outline-none">
-                                <option value="text-lg">Pequeña</option>
-                                <option value="text-2xl" selected>Mediana</option>
+                                <option value="text-lg">Pequeño</option>
+                                <option value="text-2xl" selected>Mediano</option>
                                 <option value="text-4xl">Grande</option>
                             </select>
                         </div>
                     </div>
                     <div class="flex items-center gap-2 mt-1">
-                        <label class="text-[10px] text-zinc-400 flex-grow">Color punteros</label>
-                        <input type="color" id="input-hotspot-color" value="#ffffff" class="h-8 w-10 rounded bg-zinc-800/50 border border-white/5 cursor-pointer" title="Color de las flechas de transición">
+                        <label class="text-[10px] text-zinc-400 flex-grow">Color del puntero</label>
+                        <input type="color" id="input-hotspot-color" value="#ffffff" class="h-8 w-10 rounded bg-zinc-800/50 border border-white/5 cursor-pointer" title="Color de la flecha de transición">
                     </div>
 
                     <div class="mt-3 pt-3 border-t border-white/5 space-y-3">
                         <label class="flex items-center justify-between gap-3 bg-zinc-800/40 p-2 rounded-lg border border-white/5 cursor-pointer">
                             <div>
                                 <span class="text-xs text-zinc-300 font-medium">Marco panorámico 2:1</span>
-                                <p class="text-[10px] text-zinc-500 leading-tight mt-0.5">Encaja la vista dentro de un marco proporcional 360º.</p>
+                                <p class="text-[10px] text-zinc-500 leading-tight mt-0.5">Ajusta la vista dentro de un marco 360º proporcional.</p>
                             </div>
                             <input type="checkbox" id="input-frame-enabled" class="rounded border-zinc-700 text-indigo-500 focus:ring-indigo-500 shrink-0">
                         </label>
@@ -517,14 +510,14 @@ SOFTWARE.
 
             <div class="bg-zinc-800/30 border border-white/5 rounded-xl overflow-hidden" id="section-plan-wrapper">
                 <button class="w-full flex justify-between items-center p-3 bg-zinc-800/50 hover:bg-zinc-800 transition-colors" onclick="toggleAccordion('acc-plan', 'icon-plan')">
-                    <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">B. Plano (Opcional)</h3>
+                    <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">B. Plano (opcional)</h3>
                     <svg id="icon-plan" class="w-4 h-4 text-zinc-500 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                 </button>
                 <div id="acc-plan" class="hidden p-4 border-t border-white/5">
                     <div id="plan-upload-area" class="border-2 border-dashed border-zinc-700 rounded-xl p-4 text-center hover:border-indigo-500 transition-colors cursor-pointer" onclick="document.getElementById('plan-input').click()">
                         <input type="file" id="plan-input" accept="image/*" class="hidden">
                         <svg class="w-6 h-6 mx-auto text-zinc-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
-                        <span class="text-[11px] text-zinc-400" id="plan-text">Subir o Arrastrar plano</span>
+                        <span class="text-[11px] text-zinc-400" id="plan-text">Sube o arrastra el plano</span>
                     </div>
                 </div>
             </div>
@@ -540,17 +533,17 @@ SOFTWARE.
                 <div id="scene-meta-editor" class="hidden mt-4 space-y-3 bg-indigo-500/5 p-3 rounded-lg border border-indigo-500/10">
                     <div>
                         <label class="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold block mb-1">Subtítulo actual</label>
-                        <input type="text" id="input-subtitle" placeholder="Ej: Salón principal..." class="w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-xs text-white focus:border-indigo-500 outline-none">
+                        <input type="text" id="input-subtitle" placeholder="Ej.: Salón principal..." class="w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-xs text-white focus:border-indigo-500 outline-none">
                     </div>
                     <div>
-                        <label class="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold block mb-1">Información (Icono 'i')</label>
-                        <textarea id="input-info" rows="2" placeholder="Ej: Reformado en 2024..." class="w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none resize-none"></textarea>
+                        <label class="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold block mb-1">Información (icono 'i')</label>
+                        <textarea id="input-info" rows="2" placeholder="Ej.: Renovado en 2024..." class="w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none resize-none"></textarea>
                     </div>
                 </div>
 
                 <button id="btn-add-scene" class="w-full py-2.5 mt-2 border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 rounded-xl hover:bg-indigo-500/20 transition-colors text-sm font-medium flex items-center justify-center gap-2" onclick="document.getElementById('scene-input').click()">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                    Añadir Imagen 360
+                    Añadir imagen 360
                 </button>
                 <input type="file" id="scene-input" accept="image/*" class="hidden" multiple>
             </div>
@@ -582,7 +575,7 @@ SOFTWARE.
             globalTitle: "", titleColor: "#ffffff", titleSize: "text-2xl", hotspotColor: "#ffffff",
             panoramaFrameEnabled: false, panoramaFrameColor: "#ffffff", panoramaFrameWidth: 8, panoramaFrameMargin: 24,
             hotspotMode: null, // 'nav', 'info', or 'nav-step2'
-            pendingHotspot: null // Almacenará estado para el paso 2: { originId, hsRef, originPitch, originYaw }
+            pendingHotspot: null // Stores state for step 2: { originId, hsRef, originPitch, originYaw }
         };
 
         let viewer = null;
@@ -590,7 +583,7 @@ SOFTWARE.
         let calibAngle = 0;
         const expandedSceneMetaIds = new Set();
 
-        // --- MOTOR GESTIÓN DE MEMORIA (BLOBS) ---
+        // --- MOTOR DE GESTIÓN DE MEMORIA (BLOBS) ---
         function compressImageToBlob(file, maxW = 4096) {
             return new Promise((resolve) => {
                 const reader = new FileReader();
@@ -671,7 +664,7 @@ SOFTWARE.
                 let targetScene = AppState.scenes.find(s => s.id === args.targetId);
                 if(!targetScene) return;
 
-                // Lógica de destino: Vista personalizada o Magia Espacial
+                // Destino logic: Custom View or Spatial Magic
                 if (args.targetPitch !== undefined && args.targetYaw !== undefined) {
                     viewer.loadScene(args.targetId, args.targetPitch, args.targetYaw, 120);
                 } else {
@@ -693,7 +686,7 @@ SOFTWARE.
             return[...nav, ...info];
         }
 
-        // --- DRAG & DROP GLOBAL ---
+        // --- ARRASTRAR Y SOLTAR GLOBAL ---
         document.body.addEventListener('dragover', e => { e.preventDefault(); document.getElementById('drag-overlay').classList.remove('hidden'); });
         document.body.addEventListener('dragleave', e => { if(e.target === document.getElementById('drag-overlay')) document.getElementById('drag-overlay').classList.add('hidden'); });
         document.body.addEventListener('drop', async e => {
@@ -714,7 +707,7 @@ SOFTWARE.
         });
 
 
-        // --- UI TOGGLES ---
+        // --- CONTROLES DE INTERFAZ ---
         const sidebar = document.getElementById('sidebar');
         let sidebarOpen = false;
         function handleSidebarToggle() {
@@ -738,11 +731,11 @@ SOFTWARE.
 
             if(!editor || !inputSubtitle || !inputInfo) return;
 
-            // El editor antiguo era único y cambiaba con la escena activa. Eso hacía que,
-            // al añadir una segunda imagen, pareciera que la primera ya no tenía sus casillas
-            // para rectificar subtítulo / anotación. Ahora las casillas reales se renderizan
-            // dentro de cada tarjeta de escena en updateScenesList(), por lo que este bloque
-            // se mantiene oculto solo como respaldo interno de compatibilidad.
+            // The old editor was unique and changed with the active scene. That made it seem,
+            // when adding a second image, that the first one no longer had its fields
+            // to edit subtitle / annotation. Now the real fields are rendered
+            // inside each scene card in updateScenesList(), so this block
+            // remains hidden only as an internal compatibility fallback.
             editor.classList.add('hidden');
             inputSubtitle.disabled = true;
             inputInfo.disabled = true;
@@ -859,7 +852,7 @@ SOFTWARE.
             if(active) { active.info = e.target.value; updateBrandingUI(); }
         });
 
-        // --- HELPER CONFIGURADOR DE ESCENAS ---
+        // --- SCENE CONFIGURATION HELPER ---
         function reloadSceneConfig(sceneId) {
             const s = AppState.scenes.find(x => x.id === sceneId);
             if(s && viewer) {
@@ -900,7 +893,7 @@ SOFTWARE.
             updateTransitionsList();
         }
 
-        // --- TRANSITIONS & INFO LIST ---
+        // --- LISTA DE TRANSICIONES E INFORMACIÓN ---
         let transitionsPanelOpen = false;
         document.getElementById('btn-toggle-transitions').addEventListener('click', (e) => {
             e.stopPropagation(); transitionsPanelOpen = !transitionsPanelOpen;
@@ -914,7 +907,7 @@ SOFTWARE.
             const totalElements = (aS?.hotspots?.length || 0) + (aS?.infoHotspots?.length || 0);
 
             if(totalElements === 0) {
-                tl.innerHTML = '<div class="text-[10px] text-zinc-500 italic text-center py-2">No hay elementos</div>';
+                tl.innerHTML = '<div class="text-[10px] text-zinc-500 italic text-center py-2">Sin elementos</div>';
                 document.getElementById('transitions-count').innerText = '0';
                 document.getElementById('btn-toggle-transitions').classList.add('hidden');
                 return;
@@ -990,7 +983,7 @@ SOFTWARE.
             AppState.hotspotMode = 'nav';
             document.getElementById('panorama').classList.add('cursor-add-hotspot', 'pulse-border');
             
-            let htmlOptions = '<option value="" disabled selected>-- Seleccionar estancia --</option>';
+            let htmlOptions = '<option value="" disabled selected>-- Selecciona estancia --</option>';
             AppState.scenes.forEach(s => { if(s.id !== AppState.activeSceneId) htmlOptions += `<option value="${s.id}">${s.name}</option>`; });
             document.getElementById('hotspot-target').innerHTML = htmlOptions;
             document.getElementById('hotspot-text').value = ''; document.getElementById('hotspot-text').dataset.auto = "true";
@@ -1029,7 +1022,7 @@ SOFTWARE.
             const originPitch = AppState.pendingHotspot.originPitch;
             const originYaw = AppState.pendingHotspot.originYaw;
             
-            // Toast Visual Feedback
+            // Visual feedback toast
             const toast = document.createElement('div');
             toast.className = "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-emerald-600/90 text-white px-6 py-3 rounded-full text-sm font-bold backdrop-blur-md z-[100] transition-opacity duration-300 shadow-2xl";
             toast.innerText = "Vista guardada. Volviendo...";
@@ -1065,10 +1058,10 @@ SOFTWARE.
                 if (index > -1) originScene.hotspots.splice(index, 1);
             }
             
-            // Toast Visual Feedback
+            // Visual feedback toast
             const toast = document.createElement('div');
             toast.className = "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-zinc-800/90 text-white px-6 py-3 rounded-full text-sm font-bold backdrop-blur-md z-[100] transition-opacity duration-300 shadow-2xl";
-            toast.innerText = "Acción cancelada. Volviendo...";
+            toast.innerText = "Action canceled. Returning...";
             document.getElementById('main-viewer-area').appendChild(toast);
 
             document.getElementById('target-view-panel').classList.replace('flex', 'hidden');
@@ -1088,7 +1081,7 @@ SOFTWARE.
         });
 
 
-        // --- CARGA DE ESCENAS & PLANOS (OPTIMIZADOS) ---
+        // --- SCENE & FLOOR PLAN LOADING (OPTIMIZED) ---
         async function processPlanFile(file) {
             AppState.floorPlanBlob = await compressImageToBlob(file, 1000);
             if(AppState.floorPlanB64) URL.revokeObjectURL(AppState.floorPlanB64);
@@ -1202,11 +1195,11 @@ SOFTWARE.
                 metaBox.innerHTML = `
                     <div>
                         <label class="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold block mb-1">Subtítulo de esta imagen</label>
-                        <input type="text" class="scene-subtitle-input w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-xs text-white focus:border-indigo-500 outline-none" placeholder="Ej: Salón principal...">
+                        <input type="text" class="scene-subtitle-input w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-xs text-white focus:border-indigo-500 outline-none" placeholder="Ej.: Salón principal...">
                     </div>
                     <div>
-                        <label class="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold block mb-1">Anotación / Información de esta imagen</label>
-                        <textarea rows="2" class="scene-info-input w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none resize-none" placeholder="Ej: Reformado en 2024..."></textarea>
+                        <label class="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold block mb-1">Anotación / información de esta imagen</label>
+                        <textarea rows="2" class="scene-info-input w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none resize-none" placeholder="Ej.: Renovado en 2024..."></textarea>
                     </div>
                 `;
 
@@ -1247,8 +1240,8 @@ SOFTWARE.
                     }
                 });
 
-                // Al enfocar cualquier casilla, seleccionamos también esa escena en el visor,
-                // para que el usuario vea exactamente la imagen que está corrigiendo.
+                // When focusing any field, we also select that scene in the viewer,
+                // so the user sees exactly the image being corrected.
                 [subtitleInput, infoInput].forEach(input => {
                     input.addEventListener('focus', () => {
                         expandedSceneMetaIds.add(s.id);
@@ -1267,8 +1260,8 @@ SOFTWARE.
             const s = AppState.scenes.find(x => x.id === id);
             if(!s) return;
 
-            // La escena activa se actualiza antes de que Pannellum dispare `scenechange`.
-            // Así los campos de subtítulo e información siempre editan la escena correcta.
+            // The active scene is updated before Pannellum fires `scenechange`.
+            // This ensures the subtitle and information fields always edit the correct scene.
             AppState.activeSceneId = id;
             syncSceneMetaEditor();
             updateBrandingUI();
@@ -1282,7 +1275,7 @@ SOFTWARE.
         }
 
         function deleteScene(id, e) {
-            e.stopPropagation(); if(!confirm("¿Borrar escena?")) return;
+            e.stopPropagation(); if(!confirm("¿Eliminar escena?")) return;
             const target = AppState.scenes.find(s => s.id === id);
             if(target && target.url) URL.revokeObjectURL(target.url);
             AppState.scenes = AppState.scenes.filter(s => s.id !== id);
@@ -1335,7 +1328,7 @@ SOFTWARE.
                         document.getElementById('panorama').classList.remove('cursor-add-hotspot', 'pulse-border');
                         document.getElementById('hotspot-panel').classList.add('hidden');
                         
-                        // Toast visual antes de transicionar
+                        // Visual toast before transitioning
                         const overlayMsg = document.createElement('div');
                         overlayMsg.className = "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 text-white px-6 py-3 rounded-full text-sm font-bold backdrop-blur-md z-[100] transition-opacity duration-300 shadow-2xl";
                         overlayMsg.innerText = "Flecha añadida. Viajando al destino...";
@@ -1350,14 +1343,14 @@ SOFTWARE.
                             document.getElementById('target-view-indicator').classList.replace('hidden', 'flex');
                             updateAdvancedToolsVisibility();
                         }, 800);
-                        return; // Salimos sin resetear el estado normal
+                        return; // Exit without resetting the normal state
                     } else {
                         updateAdvancedToolsVisibility();
                     }
                 } 
                 else if (AppState.hotspotMode === 'info') {
                     const text = document.getElementById('info-hotspot-text').value.trim();
-                    if(!text) return alert("Por favor, escribe un texto de información en el panel.");
+                    if(!text) return alert("Introduce el texto informativo en el panel.");
                     if(!active.infoHotspots) active.infoHotspots = [];
                     const ihs = { pitch: coords[0], yaw: coords[1], text, id: 'info_' + Date.now() };
                     active.infoHotspots.push(ihs);
@@ -1371,7 +1364,7 @@ SOFTWARE.
             updateBrandingUI();
         }
 
-        // --- MINIMAPA DRAG, PAN & ZOOM EN TIEMPO REAL ---
+        // --- REAL-TIME MINIMAP DRAG, PAN & ZOOM ---
         const mmC = document.getElementById('minimap-container');
         const mmT = document.getElementById('minimap-transform');
         let mmScale = 1; let mmPanX = 0; let mmPanY = 0;
@@ -1448,7 +1441,7 @@ SOFTWARE.
         }
         requestAnimationFrame(loopRadar);
 
-        // --- CALIBRACIÓN RADAR ---
+        // --- RADAR CALIBRATION ---
         const calibModal = document.getElementById('calibration-modal');
         const calibTouch = document.getElementById('calib-touch-area');
         const calibArrow = document.getElementById('calib-arrow');
@@ -1474,7 +1467,7 @@ SOFTWARE.
             calibModal.classList.replace('flex', 'hidden');
         });
 
-        // --- GALERÍA DE MINIATURAS ---
+        // --- THUMBNAIL GALLERY ---
         let isThumbnailsOpen = false;
         function renderThumbnails() {
             const list = document.getElementById('thumbnails-list'); list.innerHTML = '';
@@ -1519,7 +1512,7 @@ SOFTWARE.
         });
 
 
-        // --- EXPORTACIÓN AVANZADA ---
+        // --- ADVANCED EXPORT ---
         const modal = document.getElementById('export-modal');
         document.getElementById('btn-export-modal').addEventListener('click', () => {
             if(AppState.scenes.length === 0) return alert("Añade al menos una foto.");
@@ -1537,7 +1530,7 @@ SOFTWARE.
                     let filename = AppState.globalTitle.trim() ? AppState.globalTitle.trim().replace(/[^a-zA-Z0-9_\-]/g, '_') : 'Mi_Tour_Virtual';
                     const includeLogo = document.getElementById('export-logo').checked;
                     
-                    // PREPARAR DATOS (Convertir temporalmente Blobs a Base64 para empaquetar)
+                    // PREPARE DATA (Temporarily convert Blobs to Base64 for packaging)
                     const exportData = { scenes: JSON.parse(JSON.stringify(AppState.scenes)), plan: null, first: AppState.activeSceneId, brand: { t: AppState.globalTitle, c: AppState.titleColor, s: AppState.titleSize, l: null }, hotspotColor: AppState.hotspotColor, frame: { enabled: AppState.panoramaFrameEnabled, color: AppState.panoramaFrameColor, width: AppState.panoramaFrameWidth, margin: AppState.panoramaFrameMargin } };
                     
                     if(AppState.floorPlanBlob) exportData.plan = await blobToBase64(AppState.floorPlanBlob);
@@ -1546,43 +1539,70 @@ SOFTWARE.
                         exportData.scenes[i].url = await blobToBase64(AppState.scenes[i].blob);
                         delete exportData.scenes[i].blob;
                     }
-                    
-                    if(type === 'project') {
+                    if(type === 'admin') {
                         if(!filename.endsWith('.html')) filename += '.html';
-                        const stObj = { ...exportData, floorPlanB64: exportData.plan, logoB64: exportData.brand.l }; 
-                        const st = `<script id="saved-state">window.SAVED_STATE = ${JSON.stringify(stObj)};<\/script>`;
-                        const blob = new Blob([window.PRISTINE_HTML.replace('</body>', st + '\n</body>')], { type: 'text/html' });
+                        const projectState = createSavedProjectState(exportData);
+                        const blob = new Blob([generateEditableProjectHTML(projectState)], { type: 'text/html' });
                         const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click();
-                        
-                    } else if(type === 'zip') {
-                        document.getElementById('export-status-text').innerText = "Comprimiendo ZIP... esto puede tardar un poco.";
-                        const zip = new JSZip();
-                        const imgFolder = zip.folder("images");
-                        
-                        for(let s of exportData.scenes) {
-                            imgFolder.file(`${s.id}.jpg`, base64ToBlob(s.url));
-                            s.url = `images/${s.id}.jpg`; 
-                        }
-                        if(exportData.plan) { imgFolder.file(`plan.jpg`, base64ToBlob(exportData.plan)); exportData.plan = `images/plan.jpg`; }
-                        if(exportData.brand.l) { imgFolder.file(`logo.png`, base64ToBlob(exportData.brand.l)); exportData.brand.l = `images/logo.png`; }
-
-                        zip.file("index.html", generatePlayerHTML(exportData));
-                        const zipBlob = await zip.generateAsync({type:"blob"});
-                        const link = document.createElement('a'); link.href = URL.createObjectURL(zipBlob); link.download = filename + ".zip"; link.click();
-
                     } else {
                         if(!filename.endsWith('.html')) filename += '.html';
                         const blob = new Blob([generatePlayerHTML(exportData)], { type: 'text/html' });
                         const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click();
                     }
                 } catch(e) {
-                    console.error(e); alert("Error al exportar.");
+                    console.error(e); alert("Error de exportación.");
                 } finally {
                     document.getElementById('export-overlay').classList.replace('flex', 'hidden');
-                    document.getElementById('export-status-text').innerText = "Por favor, no cierres la ventana. Puede tardar un momento.";
+                    document.getElementById('export-status-text').innerText = "No cierres la ventana. Esto puede tardar un momento.";
                 }
             }, 50);
         });
+
+        function createSavedProjectState(exportData) {
+            const frame = exportData.frame || {};
+            const brand = exportData.brand || {};
+            return {
+                isLocked: false,
+                floorPlanB64: exportData.plan || null,
+                floorPlanBlob: null,
+                scenes: (exportData.scenes || []).map(s => ({ ...s })),
+                activeSceneId: exportData.first || ((exportData.scenes && exportData.scenes[0]) ? exportData.scenes[0].id : null),
+                maxScenes: AppState.maxScenes || 30,
+                logoB64: brand.l || null,
+                logoBlob: null,
+                globalTitle: brand.t || "",
+                titleColor: brand.c || "#ffffff",
+                titleSize: brand.s || "text-2xl",
+                hotspotColor: exportData.hotspotColor || "#ffffff",
+                panoramaFrameEnabled: !!frame.enabled,
+                panoramaFrameColor: frame.color || "#ffffff",
+                panoramaFrameWidth: frame.width ?? 8,
+                panoramaFrameMargin: frame.margin ?? 24,
+                hotspotMode: null,
+                pendingHotspot: null,
+                forceSidebarOpen: true
+            };
+        }
+
+        function generateEditableProjectHTML(stateObj) {
+            const docClone = document.documentElement.cloneNode(true);
+            docClone.querySelectorAll('script#saved-state').forEach(el => el.remove());
+
+            const exportOverlay = docClone.querySelector('#export-overlay');
+            if(exportOverlay) { exportOverlay.classList.remove('flex'); exportOverlay.classList.add('hidden'); }
+            const exportModal = docClone.querySelector('#export-modal');
+            if(exportModal) { exportModal.classList.remove('flex'); exportModal.classList.add('hidden'); }
+            const dragOverlay = docClone.querySelector('#drag-overlay');
+            if(dragOverlay) dragOverlay.classList.add('hidden');
+
+            const savedStateScript = `<script id="saved-state">window.SAVED_STATE = ${JSON.stringify(stateObj)};<\/script>`;
+            let html = '<!DOCTYPE html>\n' + docClone.outerHTML;
+            const closingBodyIndex = html.lastIndexOf('</body>');
+            if(closingBodyIndex !== -1) {
+                return html.slice(0, closingBodyIndex) + savedStateScript + '\n' + html.slice(closingBodyIndex);
+            }
+            return html + savedStateScript;
+        }
 
         // HTML DEL REPRODUCTOR EXPORTADO
         function generatePlayerHTML(dataObj) {
@@ -1592,7 +1612,7 @@ SOFTWARE.
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tour Virtual 360°</title>
+    <title>Tour virtual 360°</title>
     <script src="https://cdn.tailwindcss.com"><\/script>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
     <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"><\/script>
@@ -1776,9 +1796,23 @@ SOFTWARE.
 
         document.getElementById('btn-show-info').addEventListener('click', () => document.getElementById('info-modal').classList.replace('hidden', 'flex'));
 
-        // --- RESTAURACIÓN PROYECTOS GUARDADOS ---
+        // --- RESTORE SAVED PROJECTS ---
         window.addEventListener('DOMContentLoaded', () => {
             if(window.SAVED_STATE) {
+                if(window.SAVED_STATE.brand) {
+                    window.SAVED_STATE.globalTitle = window.SAVED_STATE.globalTitle ?? window.SAVED_STATE.brand.t ?? "";
+                    window.SAVED_STATE.titleColor = window.SAVED_STATE.titleColor ?? window.SAVED_STATE.brand.c ?? "#ffffff";
+                    window.SAVED_STATE.titleSize = window.SAVED_STATE.titleSize ?? window.SAVED_STATE.brand.s ?? "text-2xl";
+                    window.SAVED_STATE.logoB64 = window.SAVED_STATE.logoB64 ?? window.SAVED_STATE.brand.l ?? null;
+                }
+                if(window.SAVED_STATE.frame) {
+                    window.SAVED_STATE.panoramaFrameEnabled = window.SAVED_STATE.panoramaFrameEnabled ?? !!window.SAVED_STATE.frame.enabled;
+                    window.SAVED_STATE.panoramaFrameColor = window.SAVED_STATE.panoramaFrameColor ?? window.SAVED_STATE.frame.color ?? "#ffffff";
+                    window.SAVED_STATE.panoramaFrameWidth = window.SAVED_STATE.panoramaFrameWidth ?? window.SAVED_STATE.frame.width ?? 8;
+                    window.SAVED_STATE.panoramaFrameMargin = window.SAVED_STATE.panoramaFrameMargin ?? window.SAVED_STATE.frame.margin ?? 24;
+                }
+                window.SAVED_STATE.activeSceneId = window.SAVED_STATE.activeSceneId ?? window.SAVED_STATE.first ?? null;
+                window.SAVED_STATE.floorPlanB64 = window.SAVED_STATE.floorPlanB64 ?? window.SAVED_STATE.plan ?? null;
                 Object.assign(AppState, window.SAVED_STATE);
                 
                 document.getElementById('input-title').value = AppState.globalTitle || "";
@@ -1826,6 +1860,12 @@ SOFTWARE.
                     updateScenesList();
                 }
                 updateBrandingUI();
+                if(window.SAVED_STATE.forceSidebarOpen) {
+                    sidebarOpen = true;
+                    sidebar.classList.remove('translate-x-full');
+                    sidebar.style.marginRight = "0";
+                    setTimeout(updatePanoramaFrameUI, 320);
+                }
             }
         });
     </script>
