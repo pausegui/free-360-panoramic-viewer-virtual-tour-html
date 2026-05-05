@@ -1,0 +1,1833 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+MIT License
+
+Copyright (c) 2026 [Pablo Segui Segui - ovacen.com]
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360° Tour Builder Pro</title>
+    
+    <!-- Tailwind & Fuentes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- JSZip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <!-- Pannellum -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; overflow: hidden; background: #09090b; color: #e4e4e7; }
+        #panorama { width: 100%; height: 100%; background: transparent; }
+        #panorama.panorama-frame-active {
+            position: absolute !important;
+            inset: auto !important;
+            overflow: hidden;
+            box-sizing: border-box;
+            background: #000;
+            transition: width 0.25s ease, height 0.25s ease, border-width 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+        }
+        .pnlm-container { background: transparent !important; }
+        .pnlm-load-box { display: none !important; }
+        
+        .pnlm-ui .pnlm-zoom-controls { left: 16px !important; right: auto !important; top: 70px !important; bottom: auto !important; margin-top: 0 !important; }
+        .pnlm-ui .pnlm-fullscreen-toggle-button { left: 16px !important; right: auto !important; top: 135px !important; bottom: auto !important; margin-top: 0 !important; }
+
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
+
+        /* Points on the minimap */
+        @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgba(99,102,241,0.7); } 70% { box-shadow: 0 0 0 10px rgba(99,102,241,0); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); } }
+        .marker-active { animation: pulse-ring 2s infinite; background: #6366f1 !important; border-color: #fff !important; z-index: 20; }
+        .marker-inactive { background: #3f3f46; border-color: #a1a1aa; opacity: 0.9; z-index: 10; }
+        
+        /* RADAR CONE */
+        .radar-cone {
+            position: absolute;
+            bottom: 50%; left: 50%;
+            width: 160px; height: 160px;
+            margin-left: -80px; 
+            transform-origin: bottom center;
+            background: radial-gradient(circle at 50% 100%, rgba(250, 204, 21, 0.8) 0%, rgba(250, 204, 21, 0.4) 40%, transparent 70%);
+            clip-path: polygon(50% 100%, 15% 0, 85% 0);
+            pointer-events: none;
+            will-change: transform;
+            z-index: 15;
+        }
+
+        .sidebar-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), margin 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        .compass-bg {
+            background: repeating-conic-gradient(from 0deg, #27272a 0deg, #27272a 10deg, #3f3f46 10deg, #3f3f46 20deg);
+        }
+
+        /* Hotspot design */
+        .custom-hotspot-container { width: 60px; height: 60px; margin-left: -30px; margin-top: -30px; z-index: 20; }
+        .info-hotspot-container { width: 36px; height: 36px; margin-left: -18px; margin-top: -18px; z-index: 20; }
+        
+        /* Custom cursor for adding hotspots */
+        .cursor-add-hotspot { cursor: crosshair !important; }
+        .pulse-border { animation: border-pulse 1.5s infinite; }
+        @keyframes border-pulse { 0% { box-shadow: inset 0 0 0 2px rgba(14, 165, 233, 0.2); } 50% { box-shadow: inset 0 0 0 4px rgba(14, 165, 233, 0.8); } 100% { box-shadow: inset 0 0 0 2px rgba(14, 165, 233, 0.2); } }
+
+
+        /* Panoramic frame: desktop only.
+           On mobile / tablet it is visually disabled without changing the JS logic. */
+        @media (max-width: 1180px), (pointer: coarse) {
+            #panorama.panorama-frame-active {
+                position: absolute !important;
+                inset: 0 !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                transform: none !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+            }
+        }
+    </style>
+
+    <script>
+        let rawHTML = document.documentElement.outerHTML;
+        rawHTML = rawHTML.replace(/<script id="saved-state">[\s\S]*?<\/script>/, '');
+        window.PRISTINE_HTML = "<!DOCTYPE html>\n<html lang=\"es\">\n" + rawHTML + "\n</html>";
+    </script>
+</head>
+<body class="h-screen w-screen flex relative">
+
+    <!-- GLOBAL DRAG & DROP OVERLAY -->
+    <div id="drag-overlay" class="fixed inset-0 z-[200] bg-indigo-600/90 backdrop-blur-sm hidden flex-col items-center justify-center pointer-events-none transition-opacity">
+        <svg class="w-24 h-24 text-white mb-4 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+        <h2 class="text-4xl font-bold text-white text-center mb-2">Drop the image here</h2>
+        <p class="text-indigo-200 text-lg">It will be compressed and automatically added to the Tour</p>
+    </div>
+
+    <!-- GLOBAL OVERLAYS -->
+    <div id="export-overlay" class="fixed inset-0 bg-black/90 z-[100] hidden flex-col items-center justify-center backdrop-blur-sm">
+        <div class="w-16 h-16 border-4 border-zinc-700 border-t-indigo-500 rounded-full animate-spin mb-6"></div>
+        <h2 class="text-2xl font-bold text-white mb-2">Processing Files...</h2>
+        <p id="export-status-text" class="text-zinc-400">Please do not close the window. This may take a moment.</p>
+    </div>
+
+    <!-- EXPORT MODAL -->
+    <div id="export-modal" class="fixed inset-0 bg-black/80 z-[80] hidden items-center justify-center backdrop-blur-sm">
+        <div class="bg-zinc-900 border border-white/10 p-6 rounded-2xl w-full max-w-md shadow-2xl relative mx-4">
+            <h2 class="text-lg font-bold text-white mb-4">Save Options</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-zinc-400 uppercase tracking-wider block mb-2">File Type</label>
+                    <div class="space-y-2 max-h-[40vh] overflow-y-auto pr-2">
+                        <label class="flex items-center gap-3 bg-zinc-800/50 p-3 rounded-lg border border-white/5 cursor-pointer hover:border-indigo-500/50">
+                            <input type="radio" name="exportType" value="player" checked class="text-indigo-500 focus:ring-indigo-500 mt-1 self-start">
+                            <div>
+                                <p class="text-sm text-white font-medium">1. Single HTML File (Client)</p>
+                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Clean tour. Everything in 1 file.</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 bg-emerald-900/20 p-3 rounded-lg border border-emerald-500/20 cursor-pointer hover:border-emerald-500/50">
+                            <input type="radio" name="exportType" value="zip" class="text-emerald-500 focus:ring-emerald-500 mt-1 self-start">
+                            <div>
+                                <p class="text-sm text-emerald-400 font-medium">2. ZIP Package (For Web Server)</p>
+                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Separates photos into a folder. Prevents blocking issues.</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center gap-3 bg-indigo-900/20 p-3 rounded-lg border border-indigo-500/20 cursor-pointer hover:border-indigo-500/50">
+                            <input type="radio" name="exportType" value="project" class="text-indigo-500 focus:ring-indigo-500 mt-1 self-start">
+                            <div>
+                                <p class="text-sm text-indigo-400 font-medium">3. Editable Project (For you)</p>
+                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Save your session to continue editing tomorrow.</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+                <label class="flex items-center gap-2 mt-4 cursor-pointer">
+                    <input type="checkbox" id="export-logo" checked class="rounded border-zinc-700 text-indigo-500 focus:ring-indigo-500">
+                    <span class="text-sm text-zinc-300">Include custom logo</span>
+                </label>
+            </div>
+            <div class="flex gap-3 mt-6">
+                <button id="btn-cancel-export" class="flex-1 py-2.5 rounded-xl border border-white/10 text-zinc-300 hover:bg-white/5 transition-colors text-sm font-medium">Cancel</button>
+                <button id="btn-confirm-export" class="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white hover:bg-indigo-500 transition-colors text-sm font-medium shadow-lg shadow-indigo-500/20">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MINIMALIST RADAR CALIBRATION MODAL -->
+    <div id="calibration-modal" class="fixed inset-0 bg-black/60 z-[90] hidden items-center justify-center backdrop-blur-sm">
+        <div class="bg-zinc-900 border border-white/10 p-5 rounded-2xl w-72 shadow-2xl relative text-center">
+            <h2 class="text-base font-bold text-white mb-1 flex justify-center items-center gap-2">Starting Point</h2>
+            <p class="text-xs text-zinc-400 mb-5 leading-tight">Move the 360º view to the desired starting point and rotate the red radar arrow until it points where you are looking.</p>
+            
+            <div class="relative w-32 h-32 mx-auto rounded-full border-[6px] border-zinc-800 compass-bg shadow-inner flex items-center justify-center mb-6 cursor-crosshair" id="calib-dial">
+                <div class="absolute inset-0 rounded-full" id="calib-touch-area"></div>
+                <div id="calib-arrow" class="absolute w-full h-full pointer-events-none" style="transform: rotate(0deg);">
+                    <div class="absolute top-0 left-1/2 -translate-x-1/2 -mt-[6px] w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[16px] border-b-rose-500 filter drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]"></div>
+                </div>
+                <div class="w-3 h-3 bg-zinc-300 rounded-full shadow-lg z-10 pointer-events-none"></div>
+            </div>
+
+            <div class="flex gap-2">
+                <button onclick="document.getElementById('calibration-modal').classList.replace('flex','hidden')" class="flex-1 py-2 rounded-lg border border-white/10 text-zinc-300 hover:bg-white/5 text-xs font-medium transition-colors">Cancel</button>
+                <button id="btn-confirm-calib" class="flex-1 py-2 rounded-lg bg-amber-600 text-white hover:bg-amber-500 text-xs font-bold transition-colors">Set Start</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DETAILED INFORMATION MODAL -->
+    <div id="info-modal" class="fixed inset-0 bg-black/80 z-[100] hidden items-center justify-center backdrop-blur-md p-4">
+        <div class="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-2xl flex flex-col overflow-hidden">
+            <div class="p-5 border-b border-white/5 flex items-center justify-between bg-zinc-800/50">
+                <h2 class="text-xl font-bold text-white flex items-center gap-3">
+                    <svg class="w-6 h-6 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    Tool Guide - Tour Builder Pro
+                </h2>
+                <button onclick="document.getElementById('info-modal').classList.replace('flex','hidden')" class="text-zinc-400 hover:text-white p-2 transition-colors">
+                    <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="flex-grow overflow-y-auto p-6 sm:p-8 space-y-6 text-sm leading-relaxed text-zinc-300">
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Section 1 -->
+                    <div class="bg-white/5 p-5 rounded-xl border border-white/5">
+                        <h3 class="text-indigo-400 font-bold uppercase tracking-widest text-xs flex items-center gap-2 mb-3">
+                            Side Panel (Identity and Floor Plan)
+                        </h3>
+                        <ul class="space-y-3 text-[13px]">
+                            <li><strong class="text-white block">Logo and Global Title:</strong> Define the branding of your virtual tour. It will always be displayed in the lower-left corner. You can change the text size and color.</li>
+                            <li><strong class="text-white block">Pointer Color (Hotspots):</strong> Allows you to customize the color of the navigation arrows so they match your corporate identity.</li>
+                            <li><strong class="text-white block">Floor Plan / Minimap:</strong> Upload a 2D image of the architectural floor plan. It enables an interactive minimap where you can place the photos.</li>
+                            <li><strong class="text-white block">360° Scenes:</strong> Upload your equirectangular panoramic photos (2:1 ratio). The system automatically optimizes them in 4K format for better performance.</li>
+                        </ul>
+                    </div>
+
+                    <!-- Section 2 -->
+                    <div class="bg-white/5 p-5 rounded-xl border border-white/5">
+                        <h3 class="text-sky-400 font-bold uppercase tracking-widest text-xs flex items-center gap-2 mb-3">
+                            Editing Panel (Thumbnails)
+                        </h3>
+                        <ul class="space-y-3 text-[13px]">
+                            <li><strong class="text-white block">Add Subtitle and Information:</strong> Select a scene in the list and add a subtitle and a descriptive text block ("i" icon).</li>
+                            <li><strong class="text-white block">Delete Scenes:</strong> Use the trash icon next to each scene. Note: When deleting, make sure to update any arrows that pointed there.</li>
+                            <li><strong class="text-white block">Save and Export:</strong> You can save a single HTML file (ideal for quickly sending via WhatsApp or email) or a complete ZIP file (better for uploading to professional web servers).</li>
+                        </ul>
+                    </div>
+
+                    <!-- Section 3 -->
+                    <div class="bg-white/5 p-5 rounded-xl border border-white/5 md:col-span-2">
+                        <h3 class="text-emerald-400 font-bold uppercase tracking-widest text-xs flex items-center gap-2 mb-3">
+                            Minimap Tools (Location Panel)
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <p class="text-indigo-300 font-bold text-xs mb-1 flex items-center gap-1">🖼️ Gallery Button</p>
+                                <p class="text-[12px] leading-snug">Displays a bottom bar with all thumbnail images, allowing the end user to quickly jump from one room to another.</p>
+                            </div>
+                            <div>
+                                <p class="text-sky-400 font-bold text-xs mb-1 flex items-center gap-1">🔗 Add Arrow (Hotspot)</p>
+                                <p class="text-[12px] leading-snug">Connects the images to each other. Click, choose the destination, optionally rename the name assigned to the arrow (Example: Living Room), and use the mouse to mark on the screen where the transition arrow will go. Optionally, you can click Advanced Settings to enable the option to set the entry view when clicking the arrow.</p>
+                            </div>
+                            <div>
+                                <p class="text-emerald-400 font-bold text-xs mb-1 flex items-center gap-1">ℹ️ Info Hotspot</p>
+                                <p class="text-[12px] leading-snug">Place information markers (green icon) on objects (a window, an appliance) to describe important qualities or features. Add text and then use the mouse to mark on the screen where the information point will go</p>
+                            </div>
+                            <div>
+                                <p class="text-amber-400 font-bold text-xs mb-1 flex items-center gap-1">📍 Set Starting Point and Radar</p>
+                                <p class="text-[12px] leading-snug">Adjust the initial view of the photo when entering it, and calibrate where the red arrow points on the minimap floor plan.</p>
+                            </div>
+                            <div>
+                                <p class="text-sky-500 font-bold text-xs mb-1 flex items-center gap-1">🔄 Transition List</p>
+                                <p class="text-[12px] leading-snug">View, manage, and delete the navigation arrows created in the current scene.</p>
+                            </div>
+                            <div>
+                                <p class="text-white font-bold text-xs mb-1 flex items-center gap-1">🔒 Lock Map</p>
+                                <p class="text-[12px] leading-snug">Locks the points (markers) on the minimap to avoid moving them by mistake while clicking as you navigate.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="p-5 bg-zinc-800/80 border-t border-white/10 text-center shrink-0">
+                <button onclick="document.getElementById('info-modal').classList.replace('flex','hidden')" class="bg-sky-600 hover:bg-sky-500 text-white px-10 py-2.5 rounded-xl font-bold transition-all shadow-xl shadow-sky-500/20 active:scale-95 text-sm">Got it, close guide</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN AREA -->
+    <main class="flex-grow relative overflow-hidden bg-black/95 flex justify-center items-center" id="main-viewer-area">
+        
+        <button id="btn-toggle-sidebar" class="absolute top-4 right-4 sm:top-6 sm:right-6 z-30 p-2.5 bg-black/50 backdrop-blur rounded-lg border border-white/10 text-white hover:bg-black/80 transition-colors shadow-xl">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+
+        <!-- Presentation Controls -->
+        <div id="player-controls" class="absolute top-4 left-4 sm:top-6 sm:left-6 z-30 flex flex-col gap-2 hidden"></div>
+
+        <!-- FLOATING HOTSPOT MODE PANEL (Add arrow) -->
+        <div id="hotspot-panel" class="absolute top-6 left-1/2 -translate-x-1/2 z-[60] bg-zinc-900/95 backdrop-blur-md border border-sky-500/50 p-4 rounded-2xl w-full max-w-md shadow-2xl hidden flex-col transition-all duration-300">
+            <div class="flex items-center gap-2 mb-3 bg-sky-500/10 p-2 rounded-lg border border-sky-500/20">
+                <div class="w-2.5 h-2.5 bg-sky-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(56,189,248,0.8)]"></div>
+                <h3 class="text-sm font-bold text-sky-400">Select the destination and CLICK on the 360 photo</h3>
+            </div>
+            
+            <div class="flex gap-3 mb-3">
+                <div class="flex-1">
+                    <label class="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Destination</label>
+                    <select id="hotspot-target" class="w-full bg-black/50 border border-white/10 text-white rounded-lg px-2 py-2 text-xs focus:border-sky-500 outline-none cursor-pointer"></select>
+                </div>
+                <div class="flex-1">
+                    <label class="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Text (Optional)</label>
+                    <input type="text" id="hotspot-text" class="w-full bg-black/50 border border-white/10 text-white rounded-lg px-2 py-2 text-xs focus:border-sky-500 outline-none placeholder:text-zinc-600" data-auto="true">
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between bg-black/40 border border-white/5 rounded-xl p-3 mb-3">
+                <div>
+                    <p class="text-[11px] font-bold text-zinc-200">Advanced Settings</p>
+                    <p class="text-[9px] text-zinc-500 mt-0.5">Capture the exact landing view</p>
+                </div>
+                <label class="flex items-center cursor-pointer group">
+                    <div class="relative flex items-center">
+                        <input type="checkbox" id="hotspot-custom-view" class="peer sr-only">
+                        <div class="w-9 h-5 bg-zinc-700 rounded-full peer-checked:bg-sky-500 transition-colors duration-300"></div>
+                        <div class="w-3.5 h-3.5 bg-white rounded-full absolute left-1 top-[3px] peer-checked:translate-x-3.5 transition-transform duration-300 shadow-sm"></div>
+                    </div>
+                </label>
+            </div>
+
+            <button id="btn-cancel-hotspot" class="w-full py-2 rounded-xl border border-white/10 text-zinc-300 hover:bg-white/5 text-xs font-medium transition-colors">Cancel Module</button>
+        </div>
+
+        <!-- FLOATING INFO HOTSPOT MODE PANEL -->
+        <div id="info-hotspot-panel" class="absolute top-6 left-1/2 -translate-x-1/2 z-[60] bg-zinc-900/95 backdrop-blur-md border border-emerald-500/50 p-4 rounded-2xl w-full max-w-md shadow-2xl hidden flex-col">
+            <div class="flex items-center gap-2 mb-3 bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
+                <div class="w-2.5 h-2.5 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]"></div>
+                <h3 class="text-sm font-bold text-emerald-400">Enter the text and CLICK on the 360 photo</h3>
+            </div>
+            <div class="mb-3">
+                <label class="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Informational text</label>
+                <textarea id="info-hotspot-text" rows="2" placeholder="E.g.: This is the kitchen, renovated in 2024..." class="w-full bg-black/50 border border-white/10 text-white rounded-lg px-2 py-2 text-xs focus:border-emerald-500 outline-none resize-none placeholder:text-zinc-600"></textarea>
+            </div>
+            <button id="btn-cancel-info-hotspot" class="w-full py-2 rounded-xl border border-white/10 text-zinc-300 hover:bg-white/5 text-xs font-medium transition-colors">Cancel Module</button>
+        </div>
+
+        <!-- FLOATING PANEL STEP 2: CUSTOM VIEW -->
+        <div id="target-view-panel" class="absolute top-6 left-1/2 -translate-x-1/2 z-[60] bg-zinc-900/95 backdrop-blur-md border border-amber-500/50 p-4 rounded-2xl w-full max-w-sm shadow-2xl hidden flex-col transition-all duration-300 text-center">
+            <div class="flex items-center justify-center gap-2 mb-3 bg-amber-500/10 p-2 rounded-lg border border-amber-500/20">
+                <div class="w-2.5 h-2.5 bg-amber-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(251,191,36,0.8)]"></div>
+                <h3 class="text-sm font-bold text-amber-400">Step 2: Adjust the landing view</h3>
+            </div>
+            <p class="text-[11px] text-zinc-300 mb-4 leading-snug">Move the camera freely to frame what the user will see upon entering, then press <strong>Accept View</strong>.</p>
+            <div class="flex gap-3">
+                <button id="btn-cancel-target-view" class="flex-1 py-2 rounded-xl border border-white/10 text-zinc-300 hover:bg-white/5 text-xs font-medium transition-colors">Cancel Action</button>
+                <button id="btn-confirm-target-view" class="flex-1 py-2 rounded-xl bg-amber-600 text-white hover:bg-amber-500 transition-colors text-xs font-bold shadow-lg shadow-amber-500/20">Accept View</button>
+            </div>
+        </div>
+
+        <!-- CENTRAL INDICATOR STEP 2 (Aiming point) -->
+        <div id="target-view-indicator" class="absolute inset-0 pointer-events-none hidden flex-col items-center justify-center z-[50]">
+            <div class="w-16 h-16 border-2 border-amber-500 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(245,158,11,0.4)] backdrop-blur-sm bg-black/10 relative">
+                <div class="w-1.5 h-1.5 bg-amber-400 rounded-full"></div>
+                <div class="absolute top-full mt-3 bg-amber-600/90 backdrop-blur border border-amber-400/50 text-white text-[10px] font-bold px-3 py-1.5 rounded shadow-lg uppercase tracking-wider whitespace-nowrap">
+                    Entry view
+                </div>
+            </div>
+        </div>
+
+        <!-- WIDGET BRANDING -->
+        <div id="branding-widget" class="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-20 flex items-center gap-3 pointer-events-none transition-opacity duration-300 opacity-0 max-w-[60vw] md:max-w-md">
+            <img id="brand-logo" src="" class="max-w-[40px] max-h-[40px] object-contain drop-shadow-md hidden shrink-0" />
+            <div class="flex flex-col drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] overflow-visible">
+                <h1 id="brand-title" class="font-bold text-white leading-tight hidden break-words"></h1>
+                <div class="flex items-center gap-2 mt-0.5 pointer-events-auto">
+                    <h2 id="brand-subtitle" class="text-zinc-200 text-sm font-medium hidden break-words"></h2>
+                    <div id="info-widget" class="relative hidden group">
+                        <button class="w-[20px] h-[20px] bg-black/50 hover:bg-black/80 backdrop-blur border border-white/20 rounded-full flex items-center justify-center text-white transition-colors outline-none shadow-lg cursor-help">
+                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </button>
+                        <div class="absolute bottom-full left-0 mb-2 w-56 sm:w-64 p-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-lg text-xs text-zinc-200 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity shadow-xl">
+                            <p id="info-text" class="leading-relaxed whitespace-pre-wrap"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="placeholder" class="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none px-4 text-center">
+            <div class="w-16 h-16 sm:w-20 sm:h-20 bg-zinc-900 rounded-full flex items-center justify-center mb-6 shadow-2xl border border-white/5">
+                <svg class="w-8 h-8 sm:w-10 sm:h-10 text-zinc-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </div>
+            <h2 class="text-lg sm:text-xl text-white font-medium mb-2">Start Your Virtual Tour</h2>
+            <p class="text-zinc-500 text-xs sm:text-sm">Drag your 360 photos here, or use the side menu.</p>
+        </div>
+
+        <div id="panorama" class="absolute inset-0 z-0 transition-all duration-300"></div>
+
+        <!-- THUMBNAIL BAR -->
+        <div id="thumbnails-bar" class="absolute bottom-0 left-0 right-0 z-20 hidden bg-black/85 backdrop-blur-md border-t border-white/10 py-3 px-4">
+            <div id="thumbnails-list" class="flex gap-3 overflow-x-auto pb-1" style="scrollbar-width:thin;"></div>
+        </div>
+
+        <!-- MINIMAP WIDGET -->
+        <div id="minimap-widget" class="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 w-36 h-36 sm:w-64 sm:h-64 md:w-80 md:h-72 bg-zinc-900/90 backdrop-blur-md rounded-xl border border-white/10 shadow-2xl hidden flex-col overflow-visible z-20 hover:scale-[1.02] transition-transform">
+            
+            <div class="bg-black/80 px-2 py-2 text-[10px] font-semibold text-zinc-400 flex justify-between items-center shrink-0 rounded-t-xl z-30 border-b border-white/10">
+                <span class="uppercase tracking-wider hidden sm:inline">Location</span>
+                <span class="uppercase tracking-wider sm:hidden">Floor Plan</span>
+                
+                <div class="flex items-center gap-1.5">
+                    <button id="btn-show-thumbnails" class="p-1.5 bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Room gallery"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg></button>
+                    <button id="btn-open-hotspot" class="p-1.5 bg-sky-500/20 text-sky-400 hover:bg-sky-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Add Arrow (Hotspot)"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg></button>
+                    <button id="btn-open-info-hotspot" class="p-1.5 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Add Information Point"><span class="font-bold text-sm leading-none w-4 h-4 flex items-center justify-center">i</span></button>
+                    <button id="btn-open-calib" class="p-1.5 bg-amber-500/20 text-amber-400 hover:bg-amber-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Set Starting Point and Radar"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg></button>
+                    <button id="btn-toggle-transitions" class="p-1.5 bg-sky-500/20 text-sky-400 hover:bg-sky-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="View active elements"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg></button>
+                    <button id="btn-lock-map" class="p-1.5 text-emerald-400 hover:bg-white/10 rounded flex items-center justify-center transition-colors" title="Lock point editing">
+                        <svg id="map-icon-unlocked" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
+                        <svg id="map-icon-locked" class="w-4 h-4 hidden text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Minimap area with Transform for Drag/Zoom -->
+            <div id="minimap-container" class="relative flex-grow overflow-hidden rounded-b-xl group bg-black/40">
+                <div id="minimap-transform" class="absolute w-full h-full transform-gpu transition-none origin-center cursor-crosshair" style="transform: scale(1) translate(0px, 0px);">
+                    <img id="minimap-img" src="" class="w-full h-full object-contain pointer-events-none opacity-90 group-hover:opacity-100 transition-opacity" />
+                    <div id="markers-layer" class="absolute inset-0"></div>
+                </div>
+            </div>
+
+            <!-- ACTIVE ELEMENTS PANEL (formerly transitions panel) -->
+            <div id="transitions-panel" class="hidden border-t border-white/10 bg-zinc-900/95 backdrop-blur-md max-h-40 overflow-y-auto">
+                <div class="px-2 py-1.5 flex items-center justify-between bg-black/60 border-b border-white/5 shrink-0">
+                    <span class="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">Interactive elements</span>
+                    <span id="transitions-count" class="text-[9px] text-zinc-500">0</span>
+                </div>
+                <div id="transitions-list" class="p-1.5"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- RIGHT SIDEBAR -->
+    <aside id="sidebar" class="w-80 h-full bg-zinc-900 border-l border-white/10 flex flex-col shrink-0 z-40 sidebar-transition translate-x-full absolute right-0 md:relative" style="margin-right: -20rem;">
+        
+        <div class="p-5 border-b border-white/5 flex items-center justify-between bg-zinc-900/50 shrink-0">
+            <div>
+                <h1 class="font-bold text-white tracking-wide flex items-center gap-2 text-sm">
+                    <svg class="w-5 h-5 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                    Tour Builder Pro
+                </h1>
+            </div>
+            <div class="flex items-center gap-1">
+                <button id="btn-show-info" class="p-2 rounded-lg hover:bg-zinc-800 transition-colors text-zinc-400 hover:text-sky-400" title="Information and Help"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
+                <button id="btn-lock" class="p-2 rounded-lg hover:bg-zinc-800 transition-colors text-emerald-400" title="Preview Mode (Hide Editor)">
+                    <svg id="icon-unlocked" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z"/></svg>
+                    <svg id="icon-locked" class="w-5 h-5 hidden text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                </button>
+                <button id="btn-close-sidebar-mobile" class="md:hidden p-2 text-zinc-400 hover:text-white"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg></button>
+            </div>
+        </div>
+
+        <div class="flex-grow overflow-y-auto p-4 space-y-4" id="sidebar-content">
+            
+            <div class="bg-zinc-800/30 border border-white/5 rounded-xl overflow-hidden">
+                <button class="w-full flex justify-between items-center p-3 bg-zinc-800/50 hover:bg-zinc-800 transition-colors" onclick="toggleAccordion('acc-identity', 'icon-identity')">
+                    <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">A. Visual Identity</h3>
+                    <svg id="icon-identity" class="w-4 h-4 text-zinc-500 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div id="acc-identity" class="hidden p-4 space-y-4 border-t border-white/5">
+                    <div class="flex items-center justify-between bg-zinc-800/50 p-2 rounded-lg border border-white/5">
+                        <span class="text-xs text-zinc-400 ml-2">Logo (Max 40x40)</span>
+                        <button class="bg-zinc-700 hover:bg-zinc-600 text-white text-[10px] px-3 py-1.5 rounded transition-colors" onclick="document.getElementById('logo-input').click()">Upload</button>
+                        <input type="file" id="logo-input" accept="image/png, image/jpeg, image/svg+xml" class="hidden">
+                    </div>
+                    <div class="space-y-2">
+                        <input type="text" id="input-title" placeholder="Main Title" class="w-full bg-zinc-800/50 border border-white/5 rounded-lg px-3 py-2 text-sm text-white focus:border-indigo-500 outline-none">
+                        <div class="flex gap-2">
+                            <input type="color" id="input-color" value="#ffffff" class="h-9 w-12 rounded bg-zinc-800/50 border border-white/5 cursor-pointer">
+                            <select id="input-size" class="flex-grow bg-zinc-800/50 border border-white/5 rounded-lg px-2 text-sm text-white outline-none">
+                                <option value="text-lg">Small</option>
+                                <option value="text-2xl" selected>Medium</option>
+                                <option value="text-4xl">Large</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1">
+                        <label class="text-[10px] text-zinc-400 flex-grow">Pointer color</label>
+                        <input type="color" id="input-hotspot-color" value="#ffffff" class="h-8 w-10 rounded bg-zinc-800/50 border border-white/5 cursor-pointer" title="Transition arrow color">
+                    </div>
+
+                    <div class="mt-3 pt-3 border-t border-white/5 space-y-3">
+                        <label class="flex items-center justify-between gap-3 bg-zinc-800/40 p-2 rounded-lg border border-white/5 cursor-pointer">
+                            <div>
+                                <span class="text-xs text-zinc-300 font-medium">2:1 panoramic frame</span>
+                                <p class="text-[10px] text-zinc-500 leading-tight mt-0.5">Fits the view inside a proportional 360º frame.</p>
+                            </div>
+                            <input type="checkbox" id="input-frame-enabled" class="rounded border-zinc-700 text-indigo-500 focus:ring-indigo-500 shrink-0">
+                        </label>
+                        <div id="frame-options" class="hidden space-y-3 bg-black/20 rounded-lg p-3 border border-white/5">
+                            <div class="flex items-center gap-2">
+                                <label class="text-[10px] text-zinc-400 flex-grow">Frame color</label>
+                                <input type="color" id="input-frame-color" value="#ffffff" class="h-8 w-10 rounded bg-zinc-800/50 border border-white/5 cursor-pointer">
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-[10px] text-zinc-400">Thickness</label>
+                                    <span id="frame-width-value" class="text-[10px] text-zinc-500">8 px</span>
+                                </div>
+                                <input type="range" id="input-frame-width" min="0" max="32" value="8" class="w-full accent-indigo-500">
+                            </div>
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="text-[10px] text-zinc-400">Outer margin</label>
+                                    <span id="frame-margin-value" class="text-[10px] text-zinc-500">24 px</span>
+                                </div>
+                                <input type="range" id="input-frame-margin" min="0" max="120" value="24" class="w-full accent-indigo-500">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-zinc-800/30 border border-white/5 rounded-xl overflow-hidden" id="section-plan-wrapper">
+                <button class="w-full flex justify-between items-center p-3 bg-zinc-800/50 hover:bg-zinc-800 transition-colors" onclick="toggleAccordion('acc-plan', 'icon-plan')">
+                    <h3 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">B. Floor Plan (Optional)</h3>
+                    <svg id="icon-plan" class="w-4 h-4 text-zinc-500 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div id="acc-plan" class="hidden p-4 border-t border-white/5">
+                    <div id="plan-upload-area" class="border-2 border-dashed border-zinc-700 rounded-xl p-4 text-center hover:border-indigo-500 transition-colors cursor-pointer" onclick="document.getElementById('plan-input').click()">
+                        <input type="file" id="plan-input" accept="image/*" class="hidden">
+                        <svg class="w-6 h-6 mx-auto text-zinc-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                        <span class="text-[11px] text-zinc-400" id="plan-text">Upload or Drag Floor Plan</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="space-y-3 pt-2">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-xs font-semibold text-zinc-500 uppercase tracking-wider">C. 360° Scenes</h3>
+                    <span class="text-[10px] bg-zinc-800 px-2 py-1 rounded text-zinc-400"><span id="scene-count">0</span>/30</span>
+                </div>
+                
+                <div id="scenes-list" class="space-y-2"></div>
+
+                <div id="scene-meta-editor" class="hidden mt-4 space-y-3 bg-indigo-500/5 p-3 rounded-lg border border-indigo-500/10">
+                    <div>
+                        <label class="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold block mb-1">Current subtitle</label>
+                        <input type="text" id="input-subtitle" placeholder="E.g.: Main living room..." class="w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-xs text-white focus:border-indigo-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold block mb-1">Information ('i' Icon)</label>
+                        <textarea id="input-info" rows="2" placeholder="E.g.: Renovated in 2024..." class="w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none resize-none"></textarea>
+                    </div>
+                </div>
+
+                <button id="btn-add-scene" class="w-full py-2.5 mt-2 border border-indigo-500/30 bg-indigo-500/10 text-indigo-400 rounded-xl hover:bg-indigo-500/20 transition-colors text-sm font-medium flex items-center justify-center gap-2" onclick="document.getElementById('scene-input').click()">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                    Add 360 Image
+                </button>
+                <input type="file" id="scene-input" accept="image/*" class="hidden" multiple>
+            </div>
+        </div>
+
+        <div class="p-4 border-t border-white/5 bg-zinc-900/50 shrink-0 text-center">
+            <button id="btn-export-modal" class="w-full py-2.5 mb-3 bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-lg font-medium hover:bg-zinc-700 transition-colors flex items-center justify-center gap-2 text-sm shadow-lg shadow-black/20">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                Save
+            </button>
+            <p class="text-[10px] text-zinc-500 leading-tight">Use 2:1 images. They will be automatically compressed to 4K.</p>
+			<p class="text-[10px] text-zinc-500 leading-tight">Tool created by Pau Seguí (<a href="https://ovacen.com/">ovacen.com</a>)</p>
+        </div>
+    </aside>
+
+    <script>
+        function toggleAccordion(contentId, iconId) {
+            document.getElementById(contentId).classList.toggle('hidden');
+            document.getElementById(iconId).classList.toggle('rotate-180');
+        }
+
+        const AppState = {
+            isLocked: false, 
+            floorPlanB64: null, floorPlanBlob: null,
+            scenes:[], 
+            activeSceneId: null,
+            maxScenes: 30,
+            logoB64: null, logoBlob: null,
+            globalTitle: "", titleColor: "#ffffff", titleSize: "text-2xl", hotspotColor: "#ffffff",
+            panoramaFrameEnabled: false, panoramaFrameColor: "#ffffff", panoramaFrameWidth: 8, panoramaFrameMargin: 24,
+            hotspotMode: null, // 'nav', 'info', or 'nav-step2'
+            pendingHotspot: null // Stores state for step 2: { originId, hsRef, originPitch, originYaw }
+        };
+
+        let viewer = null;
+        let isMapLocked = false;
+        let calibAngle = 0;
+        const expandedSceneMetaIds = new Set();
+
+        // --- MEMORY MANAGEMENT ENGINE (BLOBS) ---
+        function compressImageToBlob(file, maxW = 4096) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        let w = img.width, h = img.height;
+                        if(w > maxW) { h = Math.round((h * maxW) / w); w = maxW; }
+                        const cvs = document.createElement('canvas');
+                        cvs.width = w; cvs.height = h;
+                        cvs.getContext('2d').drawImage(img, 0, 0, w, h);
+                        cvs.toBlob(blob => resolve(blob), 'image/jpeg', 0.85); 
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function blobToBase64(blob) {
+            return new Promise(res => { const r = new FileReader(); r.onload = ()=>res(r.result); r.readAsDataURL(blob); });
+        }
+
+        function base64ToBlob(b64Data) {
+            if(!b64Data) return null;
+            const parts = b64Data.split(',');
+            const contentType = parts[0].match(/:(.*?);/)[1];
+            const byteCharacters = atob(parts[1]);
+            const byteArrays =[];
+            for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+                const slice = byteCharacters.slice(offset, offset + 512);
+                const byteNumbers = new Array(slice.length);
+                for (let i = 0; i < slice.length; i++) byteNumbers[i] = slice.charCodeAt(i);
+                byteArrays.push(new Uint8Array(byteNumbers));
+            }
+            return new Blob(byteArrays, {type: contentType});
+        }
+
+        // --- RENDERIZADORES HOTSPOTS ---
+        window.customInfoHotspotRenderer = function(hotSpotDiv, args) {
+            hotSpotDiv.classList.add('info-hotspot-container');
+            hotSpotDiv.innerHTML = `
+                <div class="relative flex items-center justify-center group pointer-events-auto w-full h-full">
+                    <div class="bg-emerald-600/80 w-6 h-6 rounded-full border-2 border-white/80 shadow-[0_0_10px_rgba(16,185,129,0.5)] transition-transform duration-300 group-hover:scale-110 cursor-pointer flex items-center justify-center">
+                        <span class="text-white font-bold text-xs leading-none select-none">i</span>
+                    </div>
+                    <div class="info-popup absolute bottom-full mb-2 bg-zinc-900/95 border border-emerald-500/30 text-zinc-200 text-sm px-3 py-2 rounded-lg shadow-xl w-52 text-center leading-snug pointer-events-none hidden" style="left:50%;transform:translateX(-50%)">
+                        ${args.text}
+                        <div class="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent" style="border-top-color:rgba(24,24,27,0.95)"></div>
+                    </div>
+                </div>
+            `;
+            hotSpotDiv.querySelector('div').addEventListener('click', (e) => {
+                if(AppState.hotspotMode) return; 
+                e.stopPropagation();
+                hotSpotDiv.querySelector('.info-popup').classList.toggle('hidden');
+            });
+        };
+
+        window.customHotspotRenderer = function(hotSpotDiv, args) {
+            hotSpotDiv.classList.add('custom-hotspot-container');
+            const c = args.color || '#ffffff';
+            hotSpotDiv.innerHTML = `
+                <div class="relative flex flex-col items-center justify-center group pointer-events-auto w-full h-full opacity-70">
+                    <div class="bg-black/60 p-2 rounded-full border-2 backdrop-blur-sm shadow-[0_0_15px_rgba(255,255,255,0.3)] transition-transform duration-300 group-hover:scale-110 cursor-pointer" style="border-color:${c}">
+                        <svg class="w-6 h-6" fill="none" stroke="${c}" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+                    </div>
+                    <div class="absolute top-full mt-2 bg-sky-600/90 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg border border-sky-400/50 uppercase tracking-widest whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                        ${args.text}
+                    </div>
+                </div>
+            `;
+            hotSpotDiv.querySelector('div').addEventListener('click', function(e) {
+                if(AppState.hotspotMode) return;
+                e.stopPropagation();
+                if(!viewer) return;
+                let activeScene = AppState.scenes.find(s => s.id === AppState.activeSceneId);
+                let targetScene = AppState.scenes.find(s => s.id === args.targetId);
+                if(!targetScene) return;
+
+                // Destination logic: Custom View or Spatial Magic
+                if (args.targetPitch !== undefined && args.targetYaw !== undefined) {
+                    viewer.loadScene(args.targetId, args.targetPitch, args.targetYaw, 120);
+                } else {
+                    let globalYaw = viewer.getYaw() - (activeScene.northOffset || 0);
+                    viewer.loadScene(args.targetId, viewer.getPitch(), globalYaw + (targetScene.northOffset || 0), 120);
+                }
+            });
+        };
+
+        function formatHotspots(hotspotsArray, infoHotspotsArray) {
+            const nav = (hotspotsArray ||[]).map(h => ({ 
+                pitch: h.pitch, 
+                yaw: h.yaw, 
+                cssClass: "custom-hotspot-container", 
+                createTooltipFunc: window.customHotspotRenderer, 
+                createTooltipArgs: { text: h.text, targetId: h.targetId, color: AppState.hotspotColor, targetPitch: h.targetPitch, targetYaw: h.targetYaw } 
+            }));
+            const info = (infoHotspotsArray ||[]).map(h => ({ pitch: h.pitch, yaw: h.yaw, cssClass: "info-hotspot-container", createTooltipFunc: window.customInfoHotspotRenderer, createTooltipArgs: { text: h.text, id: h.id } }));
+            return[...nav, ...info];
+        }
+
+        // --- GLOBAL DRAG & DROP ---
+        document.body.addEventListener('dragover', e => { e.preventDefault(); document.getElementById('drag-overlay').classList.remove('hidden'); });
+        document.body.addEventListener('dragleave', e => { if(e.target === document.getElementById('drag-overlay')) document.getElementById('drag-overlay').classList.add('hidden'); });
+        document.body.addEventListener('drop', async e => {
+            e.preventDefault(); document.getElementById('drag-overlay').classList.add('hidden');
+            if(e.dataTransfer.files.length) {
+                for(let file of e.dataTransfer.files) {
+                    if(file.type.startsWith('image/')) await processSceneFile(file);
+                }
+            }
+        });
+
+        const planArea = document.getElementById('plan-upload-area');
+        planArea.addEventListener('dragover', e => { e.preventDefault(); planArea.classList.add('border-indigo-500'); e.stopPropagation(); });
+        planArea.addEventListener('dragleave', e => { planArea.classList.remove('border-indigo-500'); e.stopPropagation(); });
+        planArea.addEventListener('drop', async e => {
+            e.preventDefault(); e.stopPropagation(); planArea.classList.remove('border-indigo-500');
+            if(e.dataTransfer.files[0]) await processPlanFile(e.dataTransfer.files[0]);
+        });
+
+
+        // --- UI TOGGLES ---
+        const sidebar = document.getElementById('sidebar');
+        let sidebarOpen = false;
+        function handleSidebarToggle() {
+            sidebarOpen = !sidebarOpen;
+            if(sidebarOpen) { sidebar.classList.remove('translate-x-full'); sidebar.style.marginRight = "0"; } 
+            else { sidebar.classList.add('translate-x-full'); sidebar.style.marginRight = "-20rem"; }
+            setTimeout(updatePanoramaFrameUI, 320);
+        }
+        document.getElementById('btn-toggle-sidebar').addEventListener('click', handleSidebarToggle);
+        document.getElementById('btn-close-sidebar-mobile').addEventListener('click', handleSidebarToggle);
+
+        function getActiveScene() {
+            return AppState.scenes.find(s => s.id === AppState.activeSceneId) || null;
+        }
+
+        function syncSceneMetaEditor() {
+            const editor = document.getElementById('scene-meta-editor');
+            const inputSubtitle = document.getElementById('input-subtitle');
+            const inputInfo = document.getElementById('input-info');
+            const active = getActiveScene();
+
+            if(!editor || !inputSubtitle || !inputInfo) return;
+
+            // The old editor was unique and changed with the active scene. That made it seem,
+            // when adding a second image, that the first one no longer had its fields
+            // to edit subtitle / annotation. Now the real fields are rendered
+            // inside each scene card in updateScenesList(), so this block
+            // remains hidden only as an internal compatibility fallback.
+            editor.classList.add('hidden');
+            inputSubtitle.disabled = true;
+            inputInfo.disabled = true;
+
+            inputSubtitle.value = active ? (active.subtitle || "") : "";
+            inputInfo.value = active ? (active.info || "") : "";
+        }
+
+        function setActiveScene(sceneId, options = {}) {
+            const scene = AppState.scenes.find(s => s.id === sceneId);
+            if(!scene) return null;
+
+            AppState.activeSceneId = scene.id;
+            syncSceneMetaEditor();
+            updateBrandingUI();
+            updateScenesList();
+            renderMarkers();
+            updateAdvancedToolsVisibility();
+
+            if(options.loadViewer !== false && viewer) {
+                if(viewer.getScene() !== scene.id) {
+                    viewer.loadScene(scene.id, options.pitch ?? (scene.startPitch || 0), options.yaw ?? (scene.startYaw || 0), options.hfov ?? 120);
+                }
+            }
+
+            return scene;
+        }
+
+        function updatePanoramaFrameUI() {
+            const pano = document.getElementById('panorama');
+            const area = document.getElementById('main-viewer-area');
+            const options = document.getElementById('frame-options');
+            const widthLabel = document.getElementById('frame-width-value');
+            const marginLabel = document.getElementById('frame-margin-value');
+            if(!pano || !area) return;
+
+            const enabled = !!AppState.panoramaFrameEnabled;
+            if(options) options.classList.toggle('hidden', !enabled);
+            if(widthLabel) widthLabel.innerText = `${AppState.panoramaFrameWidth || 0} px`;
+            if(marginLabel) marginLabel.innerText = `${AppState.panoramaFrameMargin || 0} px`;
+
+            if(!enabled) {
+                pano.classList.remove('panorama-frame-active');
+                pano.style.width = '';
+                pano.style.height = '';
+                pano.style.border = '';
+                pano.style.borderRadius = '';
+                pano.style.boxShadow = '';
+                if(viewer && typeof viewer.resize === 'function') setTimeout(() => viewer.resize(), 60);
+                return;
+            }
+
+            const margin = Math.max(0, Number(AppState.panoramaFrameMargin) || 0);
+            const availableW = Math.max(240, area.clientWidth - (margin * 2));
+            const availableH = Math.max(120, area.clientHeight - (margin * 2));
+            let frameW = Math.min(availableW, availableH * 2);
+            let frameH = frameW / 2;
+            if(frameH > availableH) { frameH = availableH; frameW = frameH * 2; }
+
+            pano.classList.add('panorama-frame-active');
+            pano.style.width = `${Math.round(frameW)}px`;
+            pano.style.height = `${Math.round(frameH)}px`;
+            pano.style.border = `${Math.max(0, Number(AppState.panoramaFrameWidth) || 0)}px solid ${AppState.panoramaFrameColor || '#ffffff'}`;
+            pano.style.borderRadius = '14px';
+            pano.style.boxShadow = '0 24px 80px rgba(0,0,0,0.55)';
+            if(viewer && typeof viewer.resize === 'function') setTimeout(() => viewer.resize(), 60);
+        }
+
+        function updateBrandingUI() {
+            const uiBrandingWidget = document.getElementById('branding-widget');
+            const uiBrandLogo = document.getElementById('brand-logo');
+            const uiBrandTitle = document.getElementById('brand-title');
+            const uiBrandSubtitle = document.getElementById('brand-subtitle');
+            const infoWidget = document.getElementById('info-widget');
+            const infoText = document.getElementById('info-text');
+
+            let hasC = false;
+            if(AppState.logoB64) { uiBrandLogo.src = AppState.logoB64; uiBrandLogo.classList.remove('hidden'); hasC = true; } 
+            else uiBrandLogo.classList.add('hidden');
+
+            if(AppState.globalTitle.trim()) {
+                uiBrandTitle.innerText = AppState.globalTitle; uiBrandTitle.style.color = AppState.titleColor;
+                uiBrandTitle.className = `font-bold leading-tight break-words ${AppState.titleSize}`;
+                uiBrandTitle.classList.remove('hidden'); hasC = true;
+            } else uiBrandTitle.classList.add('hidden');
+
+            const aS = AppState.scenes.find(s => s.id === AppState.activeSceneId);
+            if(aS && aS.subtitle && aS.subtitle.trim()) { uiBrandSubtitle.innerText = aS.subtitle; uiBrandSubtitle.classList.remove('hidden'); hasC = true; } 
+            else uiBrandSubtitle.classList.add('hidden');
+
+            if(aS && aS.info && aS.info.trim()) { infoText.innerText = aS.info; infoWidget.classList.remove('hidden'); hasC = true; } 
+            else infoWidget.classList.add('hidden');
+
+            uiBrandingWidget.classList[hasC ? 'remove' : 'add']('opacity-0');
+        }
+
+        document.getElementById('logo-input').addEventListener('change', async (e) => {
+            if(e.target.files[0]) {
+                AppState.logoBlob = e.target.files[0];
+                if(AppState.logoB64) URL.revokeObjectURL(AppState.logoB64);
+                AppState.logoB64 = URL.createObjectURL(AppState.logoBlob);
+                updateBrandingUI();
+            }
+        });
+        document.getElementById('input-title').addEventListener('input', e => { AppState.globalTitle = e.target.value; updateBrandingUI(); });
+        document.getElementById('input-color').addEventListener('input', e => { AppState.titleColor = e.target.value; updateBrandingUI(); });
+        document.getElementById('input-size').addEventListener('change', e => { AppState.titleSize = e.target.value; updateBrandingUI(); });
+        document.getElementById('input-subtitle').addEventListener('input', e => {
+            const active = getActiveScene();
+            if(active) { active.subtitle = e.target.value; updateBrandingUI(); }
+        });
+        document.getElementById('input-info').addEventListener('input', e => {
+            const active = getActiveScene();
+            if(active) { active.info = e.target.value; updateBrandingUI(); }
+        });
+
+        // --- SCENE CONFIGURATION HELPER ---
+        function reloadSceneConfig(sceneId) {
+            const s = AppState.scenes.find(x => x.id === sceneId);
+            if(s && viewer) {
+                viewer.addScene(sceneId, { 
+                    "type": "equirectangular", 
+                    "panorama": s.url, 
+                    "pitch": s.startPitch || 0, 
+                    "yaw": s.startYaw || 0, 
+                    "hotSpots": formatHotspots(s.hotspots, s.infoHotspots) 
+                });
+            }
+        }
+
+        // --- BUTTONS VISIBILITY ---
+        function updateAdvancedToolsVisibility() {
+            const hasScenes = AppState.scenes.length >= 1;
+            const hasMultiScenes = AppState.scenes.length >= 2;
+            const playerCtrl = document.getElementById('player-controls');
+            
+            if(hasScenes && viewer) { playerCtrl.classList.remove('hidden'); document.getElementById('btn-show-thumbnails').classList.toggle('hidden', !hasMultiScenes); } 
+            else { playerCtrl.classList.add('hidden'); }
+
+            const btnOpenHotspot = document.getElementById('btn-open-hotspot');
+            const btnOpenCalib = document.getElementById('btn-open-calib');
+            const btnToggleTransitions = document.getElementById('btn-toggle-transitions');
+            const btnOpenInfoHotspot = document.getElementById('btn-open-info-hotspot');
+
+            if(AppState.isLocked || AppState.hotspotMode === 'nav-step2') {
+                btnOpenHotspot.classList.add('hidden'); btnOpenCalib.classList.add('hidden'); btnToggleTransitions.classList.add('hidden'); btnOpenInfoHotspot.classList.add('hidden');
+            } else {
+                btnOpenCalib.classList.toggle('hidden', !hasScenes);
+                btnOpenInfoHotspot.classList.toggle('hidden', !hasScenes);
+                btnOpenHotspot.classList.toggle('hidden', !hasMultiScenes);
+                const aS = AppState.scenes.find(s => s.id === AppState.activeSceneId);
+                const hasElements = aS && ((aS.hotspots && aS.hotspots.length > 0) || (aS.infoHotspots && aS.infoHotspots.length > 0));
+                btnToggleTransitions.classList.toggle('hidden', !hasElements);
+            }
+            updateTransitionsList();
+        }
+
+        // --- TRANSITIONS & INFO LIST ---
+        let transitionsPanelOpen = false;
+        document.getElementById('btn-toggle-transitions').addEventListener('click', (e) => {
+            e.stopPropagation(); transitionsPanelOpen = !transitionsPanelOpen;
+            document.getElementById('transitions-panel').classList.toggle('hidden');
+            document.getElementById('btn-toggle-transitions').classList.toggle('bg-sky-500'); document.getElementById('btn-toggle-transitions').classList.toggle('text-white');
+        });
+
+        function updateTransitionsList() {
+            const aS = AppState.scenes.find(s => s.id === AppState.activeSceneId);
+            const tl = document.getElementById('transitions-list');
+            const totalElements = (aS?.hotspots?.length || 0) + (aS?.infoHotspots?.length || 0);
+
+            if(totalElements === 0) {
+                tl.innerHTML = '<div class="text-[10px] text-zinc-500 italic text-center py-2">No elements</div>';
+                document.getElementById('transitions-count').innerText = '0';
+                document.getElementById('btn-toggle-transitions').classList.add('hidden');
+                return;
+            }
+
+            document.getElementById('transitions-count').innerText = totalElements;
+            document.getElementById('btn-toggle-transitions').classList.remove('hidden');
+            tl.innerHTML = '';
+
+            (aS.hotspots ||[]).forEach((hs, idx) => {
+                const targetScene = AppState.scenes.find(s => s.id === hs.targetId);
+                const targetName = targetScene ? targetScene.name : hs.targetId;
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between bg-zinc-800/60 hover:bg-zinc-700/60 rounded px-2 py-1.5 transition-colors group mb-1 border-l-2 border-sky-500/50';
+                row.innerHTML = `
+                    <div class="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0">
+                        <svg class="w-3 h-3 text-sky-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+                        <span class="text-[10px] text-zinc-300 truncate">${hs.text || targetName}</span>
+                        <span class="text-[9px] text-zinc-500 shrink-0">→ ${targetName}</span>
+                    </div>
+                    <button class="delete-element text-zinc-600 hover:text-rose-400 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" data-type="nav" data-idx="${idx}" title="Delete transition arrow">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                `;
+                tl.appendChild(row);
+            });
+
+            (aS.infoHotspots ||[]).forEach((ihs, idx) => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between bg-zinc-800/60 hover:bg-zinc-700/60 rounded px-2 py-1.5 transition-colors group mb-1 border-l-2 border-emerald-500/50';
+                row.innerHTML = `
+                    <div class="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0">
+                        <span class="w-3 h-3 flex items-center justify-center bg-emerald-500/20 text-emerald-400 rounded-full text-[8px] font-bold shrink-0">i</span>
+                        <span class="text-[10px] text-zinc-300 truncate">${ihs.text}</span>
+                    </div>
+                    <button class="delete-element text-zinc-600 hover:text-rose-400 p-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" data-type="info" data-idx="${idx}" title="Delete information point">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
+                `;
+                tl.appendChild(row);
+            });
+
+            tl.querySelectorAll('.delete-element').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const type = btn.dataset.type;
+                    const idx = parseInt(btn.dataset.idx);
+                    
+                    if (type === 'nav') aS.hotspots.splice(idx, 1);
+                    else if (type === 'info') aS.infoHotspots.splice(idx, 1);
+                    
+                    const currentPitch = viewer.getPitch(); const currentYaw = viewer.getYaw();
+                    reloadSceneConfig(aS.id);
+                    viewer.loadScene(aS.id, currentPitch, currentYaw, 120);
+                    
+                    updateTransitionsList(); updateAdvancedToolsVisibility();
+                });
+            });
+        }
+
+        // --- ADD HOTSPOTS MODE ---
+        function exitHotspotMode() {
+            AppState.hotspotMode = null;
+            document.getElementById('panorama').classList.remove('cursor-add-hotspot', 'pulse-border');
+            document.getElementById('hotspot-panel').classList.add('hidden');
+            document.getElementById('info-hotspot-panel').classList.add('hidden');
+            document.getElementById('target-view-panel').classList.add('hidden');
+            document.getElementById('target-view-indicator').classList.add('hidden');
+        }
+
+        document.getElementById('btn-open-hotspot').addEventListener('click', () => {
+            if(!viewer || AppState.scenes.length < 2) return;
+            AppState.hotspotMode = 'nav';
+            document.getElementById('panorama').classList.add('cursor-add-hotspot', 'pulse-border');
+            
+            let htmlOptions = '<option value="" disabled selected>-- Select room --</option>';
+            AppState.scenes.forEach(s => { if(s.id !== AppState.activeSceneId) htmlOptions += `<option value="${s.id}">${s.name}</option>`; });
+            document.getElementById('hotspot-target').innerHTML = htmlOptions;
+            document.getElementById('hotspot-text').value = ''; document.getElementById('hotspot-text').dataset.auto = "true";
+            document.getElementById('hotspot-custom-view').checked = false;
+            document.getElementById('hotspot-panel').classList.replace('hidden', 'flex');
+        });
+
+        document.getElementById('hotspot-target').addEventListener('change', (e) => {
+            const hText = document.getElementById('hotspot-text');
+            if(hText.dataset.auto === "true" || hText.value.trim() === "") {
+                hText.value = AppState.scenes.find(s => s.id === e.target.value).name;
+                hText.dataset.auto = "true";
+            }
+        });
+        document.getElementById('hotspot-text').addEventListener('input', () => document.getElementById('hotspot-text').dataset.auto = "false");
+
+        document.getElementById('btn-open-info-hotspot').addEventListener('click', () => {
+            if(!viewer || !AppState.activeSceneId) return;
+            AppState.hotspotMode = 'info';
+            document.getElementById('panorama').classList.add('cursor-add-hotspot', 'pulse-border');
+            document.getElementById('info-hotspot-text').value = '';
+            document.getElementById('info-hotspot-panel').classList.replace('hidden', 'flex');
+        });
+
+        document.getElementById('btn-cancel-hotspot').addEventListener('click', exitHotspotMode);
+        document.getElementById('btn-cancel-info-hotspot').addEventListener('click', exitHotspotMode);
+
+        // --- CUSTOM VIEW LOGIC (STEP 2) ---
+        document.getElementById('btn-confirm-target-view').addEventListener('click', () => {
+            if (AppState.hotspotMode !== 'nav-step2' || !AppState.pendingHotspot) return;
+            
+            AppState.pendingHotspot.hsRef.targetPitch = viewer.getPitch();
+            AppState.pendingHotspot.hsRef.targetYaw = viewer.getYaw();
+            
+            const originId = AppState.pendingHotspot.originId;
+            const originPitch = AppState.pendingHotspot.originPitch;
+            const originYaw = AppState.pendingHotspot.originYaw;
+            
+            // Visual feedback toast
+            const toast = document.createElement('div');
+            toast.className = "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-emerald-600/90 text-white px-6 py-3 rounded-full text-sm font-bold backdrop-blur-md z-[100] transition-opacity duration-300 shadow-2xl";
+            toast.innerText = "View saved. Returning...";
+            document.getElementById('main-viewer-area').appendChild(toast);
+
+            document.getElementById('target-view-panel').classList.replace('flex', 'hidden');
+            document.getElementById('target-view-indicator').classList.replace('flex', 'hidden');
+            
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.remove(), 300);
+
+                AppState.hotspotMode = null;
+                AppState.pendingHotspot = null;
+                document.getElementById('hotspot-custom-view').checked = false; 
+                
+                reloadSceneConfig(originId);
+                viewer.loadScene(originId, originPitch, originYaw, 120);
+                updateAdvancedToolsVisibility();
+            }, 600);
+        });
+
+        document.getElementById('btn-cancel-target-view').addEventListener('click', () => {
+            if (AppState.hotspotMode !== 'nav-step2' || !AppState.pendingHotspot) return;
+            
+            const originId = AppState.pendingHotspot.originId;
+            const originPitch = AppState.pendingHotspot.originPitch;
+            const originYaw = AppState.pendingHotspot.originYaw;
+            const originScene = AppState.scenes.find(s => s.id === originId);
+            
+            if (originScene) {
+                const index = originScene.hotspots.indexOf(AppState.pendingHotspot.hsRef);
+                if (index > -1) originScene.hotspots.splice(index, 1);
+            }
+            
+            // Visual feedback toast
+            const toast = document.createElement('div');
+            toast.className = "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-zinc-800/90 text-white px-6 py-3 rounded-full text-sm font-bold backdrop-blur-md z-[100] transition-opacity duration-300 shadow-2xl";
+            toast.innerText = "Action canceled. Returning...";
+            document.getElementById('main-viewer-area').appendChild(toast);
+
+            document.getElementById('target-view-panel').classList.replace('flex', 'hidden');
+            document.getElementById('target-view-indicator').classList.replace('flex', 'hidden');
+            
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.remove(), 300);
+
+                AppState.hotspotMode = null;
+                AppState.pendingHotspot = null;
+                
+                reloadSceneConfig(originId);
+                viewer.loadScene(originId, originPitch, originYaw, 120);
+                updateAdvancedToolsVisibility();
+            }, 600);
+        });
+
+
+        // --- SCENE & FLOOR PLAN LOADING (OPTIMIZED) ---
+        async function processPlanFile(file) {
+            AppState.floorPlanBlob = await compressImageToBlob(file, 1000);
+            if(AppState.floorPlanB64) URL.revokeObjectURL(AppState.floorPlanB64);
+            AppState.floorPlanB64 = URL.createObjectURL(AppState.floorPlanBlob);
+            document.getElementById('plan-text').innerText = "Floor plan loaded";
+            document.getElementById('minimap-img').src = AppState.floorPlanB64;
+            document.getElementById('minimap-widget').classList.replace('hidden', 'flex');
+            resetMinimapTransform();
+        }
+
+        document.getElementById('plan-input').addEventListener('change', async (e) => {
+            if(e.target.files[0]) await processPlanFile(e.target.files[0]);
+        });
+
+        const btnAddScene = document.getElementById('btn-add-scene');
+        async function processSceneFile(file) {
+            const prevHtml = btnAddScene.innerHTML;
+            btnAddScene.innerHTML = `<svg class="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg> Processing...`;
+            btnAddScene.classList.add('opacity-50', 'pointer-events-none');
+
+            try {
+                const blob = await compressImageToBlob(file);
+                const sId = 'scene_' + Date.now() + Math.floor(Math.random()*100);
+                const sObj = { id: sId, name: file.name.replace(/\.[^/.]+$/, "").substring(0,25), blob: blob, url: URL.createObjectURL(blob), marker: null, subtitle: "", info: "", hotspots:[], infoHotspots:[], northOffset: 0, startPitch: 0, startYaw: 0 };
+                
+                AppState.scenes.push(sObj);
+                if(AppState.scenes.length === 1) {
+                    document.getElementById('placeholder').classList.add('hidden');
+                    initViewer(sObj);
+                } else {
+                    if(viewer) viewer.addScene(sObj.id, { "type": "equirectangular", "panorama": sObj.url, "hotSpots":[] });
+                    loadScene(sId);
+                }
+                updateScenesList(); updateAdvancedToolsVisibility();
+            } finally {
+                btnAddScene.innerHTML = prevHtml; btnAddScene.classList.remove('opacity-50', 'pointer-events-none');
+            }
+        }
+
+        document.getElementById('scene-input').addEventListener('change', async (e) => {
+            if(e.target.files.length) {
+                for(let file of e.target.files) await processSceneFile(file);
+                e.target.value = ''; 
+            }
+        });
+
+        function updateScenesList() {
+            document.getElementById('scene-count').innerText = AppState.scenes.length;
+            const l = document.getElementById('scenes-list');
+            l.innerHTML = '';
+            syncSceneMetaEditor();
+
+            AppState.scenes.forEach(s => {
+                const isA = s.id === AppState.activeSceneId;
+                const hasSubtitle = !!(s.subtitle && s.subtitle.trim());
+                const hasInfo = !!(s.info && s.info.trim());
+                const metaIsOpen = expandedSceneMetaIds.has(s.id);
+
+                const card = document.createElement('div');
+                card.className = `rounded-xl border transition-all overflow-hidden ${isA ? 'bg-indigo-600/20 border-indigo-500' : 'bg-zinc-800/50 border-white/5 hover:border-white/20'}`;
+
+                const row = document.createElement('div');
+                row.className = 'flex items-center justify-between p-2 sm:p-3 cursor-pointer';
+
+                const content = document.createElement('div');
+                content.className = 'flex items-center gap-3 overflow-hidden flex-grow min-w-0';
+                content.innerHTML = `
+                    <div class="w-8 h-8 bg-black rounded border border-white/10 flex-shrink-0 relative overflow-hidden"><img src="${s.url}" class="absolute inset-0 w-full h-full object-cover opacity-50" /></div>
+                    <div class="flex flex-col overflow-hidden min-w-0">
+                        <span class="scene-name text-xs sm:text-sm font-medium text-white truncate"></span>
+                        <span class="scene-status text-[9px] text-zinc-500 truncate"></span>
+                    </div>
+                `;
+                content.querySelector('.scene-name').innerText = s.name;
+                content.querySelector('.scene-status').innerText = `${hasSubtitle ? 'Subtitle added' : 'No subtitle'}${hasInfo ? ' · Info added' : ''}`;
+                content.addEventListener('click', () => loadScene(s.id));
+
+                const delBtn = document.createElement('button');
+                delBtn.className = `btn-delete-scene text-zinc-500 hover:text-rose-400 p-1 shrink-0 ${AppState.isLocked ? 'hidden' : ''}`;
+                delBtn.title = 'Delete scene';
+                delBtn.innerHTML = `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`;
+                delBtn.addEventListener('click', (event) => deleteScene(s.id, event));
+
+                row.appendChild(content);
+                row.appendChild(delBtn);
+                card.appendChild(row);
+
+                const metaToggle = document.createElement('button');
+                metaToggle.type = 'button';
+                metaToggle.className = `w-full flex items-center justify-between gap-2 px-2 sm:px-3 py-2 border-t border-white/5 text-left transition-colors ${metaIsOpen ? 'bg-indigo-500/10 text-indigo-300' : 'bg-black/10 text-zinc-400 hover:bg-white/5 hover:text-zinc-200'} ${AppState.isLocked ? 'hidden' : ''}`;
+                metaToggle.innerHTML = `
+                    <span class="flex items-center gap-2 min-w-0">
+                        <svg class="w-3.5 h-3.5 shrink-0 transition-transform ${metaIsOpen ? 'rotate-180' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                        <span class="text-[11px] font-semibold truncate">Subtitle / info</span>
+                    </span>
+                    <span class="flex items-center gap-1 shrink-0">
+                        ${hasSubtitle ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/20">Subtitle</span>' : ''}
+                        ${hasInfo ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/20">Info</span>' : ''}
+                    </span>
+                `;
+                metaToggle.addEventListener('click', (event) => {
+                    event.stopPropagation();
+                    if(expandedSceneMetaIds.has(s.id)) expandedSceneMetaIds.delete(s.id);
+                    else expandedSceneMetaIds.add(s.id);
+                    updateScenesList();
+                });
+                card.appendChild(metaToggle);
+
+                const metaBox = document.createElement('div');
+                metaBox.className = `scene-inline-meta px-2 sm:px-3 pb-3 pt-1 border-t border-white/5 bg-black/10 space-y-2 ${metaIsOpen ? '' : 'hidden'} ${AppState.isLocked ? 'opacity-50 pointer-events-none' : ''}`;
+                metaBox.innerHTML = `
+                    <div>
+                        <label class="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold block mb-1">Subtitle for this image</label>
+                        <input type="text" class="scene-subtitle-input w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-xs text-white focus:border-indigo-500 outline-none" placeholder="E.g.: Main living room...">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-indigo-400 uppercase tracking-widest font-semibold block mb-1">Annotation / Information for this image</label>
+                        <textarea rows="2" class="scene-info-input w-full bg-black/40 border border-white/5 rounded px-2 py-1.5 text-[11px] text-white focus:border-indigo-500 outline-none resize-none" placeholder="E.g.: Renovated in 2024..."></textarea>
+                    </div>
+                `;
+
+                const subtitleInput = metaBox.querySelector('.scene-subtitle-input');
+                const infoInput = metaBox.querySelector('.scene-info-input');
+                subtitleInput.value = s.subtitle || '';
+                infoInput.value = s.info || '';
+                subtitleInput.disabled = AppState.isLocked;
+                infoInput.disabled = AppState.isLocked;
+
+                subtitleInput.addEventListener('input', (event) => {
+                    s.subtitle = event.target.value;
+                    const status = card.querySelector('.scene-status');
+                    const toggle = card.querySelector('button[type="button"]');
+                    if(status) status.innerText = `${s.subtitle ? 'Subtitle added' : 'No subtitle'}${s.info ? ' · Info added' : ''}`;
+                    if(toggle) {
+                        const badges = toggle.querySelector('.flex.items-center.gap-1.shrink-0');
+                        if(badges) badges.innerHTML = `${s.subtitle ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/20">Subtitle</span>' : ''}${s.info ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/20">Info</span>' : ''}`;
+                    }
+                    if(AppState.activeSceneId === s.id) {
+                        syncSceneMetaEditor();
+                        updateBrandingUI();
+                    }
+                });
+
+                infoInput.addEventListener('input', (event) => {
+                    s.info = event.target.value;
+                    const status = card.querySelector('.scene-status');
+                    const toggle = card.querySelector('button[type="button"]');
+                    if(status) status.innerText = `${s.subtitle ? 'Subtitle added' : 'No subtitle'}${s.info ? ' · Info added' : ''}`;
+                    if(toggle) {
+                        const badges = toggle.querySelector('.flex.items-center.gap-1.shrink-0');
+                        if(badges) badges.innerHTML = `${s.subtitle ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/20">Subtitle</span>' : ''}${s.info ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/20">Info</span>' : ''}`;
+                    }
+                    if(AppState.activeSceneId === s.id) {
+                        syncSceneMetaEditor();
+                        updateBrandingUI();
+                    }
+                });
+
+                // When focusing any field, we also select that scene in the viewer,
+                // so the user sees exactly the image being corrected.
+                [subtitleInput, infoInput].forEach(input => {
+                    input.addEventListener('focus', () => {
+                        expandedSceneMetaIds.add(s.id);
+                        if(AppState.activeSceneId !== s.id && !AppState.hotspotMode) loadScene(s.id);
+                    });
+                    input.addEventListener('click', e => e.stopPropagation());
+                });
+
+                card.appendChild(metaBox);
+                l.appendChild(card);
+            });
+            renderMarkers();
+        }
+
+        function loadScene(id) {
+            const s = AppState.scenes.find(x => x.id === id);
+            if(!s) return;
+
+            // The active scene is updated before Pannellum fires `scenechange`.
+            // This ensures the subtitle and information fields always edit the correct scene.
+            AppState.activeSceneId = id;
+            syncSceneMetaEditor();
+            updateBrandingUI();
+            updateScenesList();
+            renderMarkers();
+            updateAdvancedToolsVisibility();
+
+            if(viewer && viewer.getScene() !== id) {
+                viewer.loadScene(id, s.startPitch || 0, s.startYaw || 0, 120);
+            }
+        }
+
+        function deleteScene(id, e) {
+            e.stopPropagation(); if(!confirm("Delete scene?")) return;
+            const target = AppState.scenes.find(s => s.id === id);
+            if(target && target.url) URL.revokeObjectURL(target.url);
+            AppState.scenes = AppState.scenes.filter(s => s.id !== id);
+            
+            if(AppState.activeSceneId === id) {
+                if(AppState.scenes.length > 0) loadScene(AppState.scenes[0].id);
+                else { viewer.destroy(); viewer = null; AppState.activeSceneId = null; document.getElementById('placeholder').classList.remove('hidden'); syncSceneMetaEditor(); updateBrandingUI(); }
+            }
+            updateAdvancedToolsVisibility(); updateScenesList();
+        }
+
+        function initViewer(s) {
+            AppState.activeSceneId = s.id;
+            const conf = { "default": { "firstScene": s.id, "sceneFadeDuration": 1000, "hfov": 120 }, "scenes": {} }; 
+            conf.scenes[s.id] = { "type": "equirectangular", "panorama": s.url, "autoLoad": true, "showFullscreenCtrl": true, "pitch": s.startPitch || 0, "yaw": s.startYaw || 0, "hotSpots": formatHotspots(s.hotspots, s.infoHotspots) };
+            viewer = pannellum.viewer('panorama', conf);
+            updatePanoramaFrameUI();
+            
+            viewer.on('scenechange', (newSceneId) => {
+                setActiveScene(newSceneId, { loadViewer: false });
+            });
+
+            // PANNELLUM NATIVE CLICK EVENT FOR HOTSPOTS
+            viewer.on('mousedown', function(e) {
+                if(!AppState.hotspotMode || AppState.hotspotMode === 'nav-step2') return;
+                const coords = viewer.mouseEventToCoords(e);
+                const active = AppState.scenes.find(s => s.id === AppState.activeSceneId);
+                
+                if(AppState.hotspotMode === 'nav') {
+                    const tId = document.getElementById('hotspot-target').value;
+                    if(!tId) return alert("Select a destination view in the top panel.");
+                    const text = document.getElementById('hotspot-text').value.trim() || AppState.scenes.find(s => s.id === tId).name;
+                    const useCustomView = document.getElementById('hotspot-custom-view').checked;
+
+                    const hs = { pitch: coords[0], yaw: coords[1], text: text, targetId: tId };
+                    active.hotspots.push(hs);
+
+                    viewer.addHotSpot({ 
+                        pitch: hs.pitch, 
+                        yaw: hs.yaw, 
+                        cssClass: "custom-hotspot-container", 
+                        createTooltipFunc: window.customHotspotRenderer, 
+                        createTooltipArgs: { text: hs.text, targetId: hs.targetId, color: AppState.hotspotColor, targetPitch: hs.targetPitch, targetYaw: hs.targetYaw } 
+                    });
+
+                    if (useCustomView) {
+                        AppState.pendingHotspot = { originId: active.id, hsRef: hs, originPitch: viewer.getPitch(), originYaw: viewer.getYaw() };
+                        AppState.hotspotMode = 'nav-step2';
+                        
+                        document.getElementById('panorama').classList.remove('cursor-add-hotspot', 'pulse-border');
+                        document.getElementById('hotspot-panel').classList.add('hidden');
+                        
+                        // Visual toast before transitioning
+                        const overlayMsg = document.createElement('div');
+                        overlayMsg.className = "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/80 text-white px-6 py-3 rounded-full text-sm font-bold backdrop-blur-md z-[100] transition-opacity duration-300 shadow-2xl";
+                        overlayMsg.innerText = "Arrow added. Traveling to destination...";
+                        document.getElementById('main-viewer-area').appendChild(overlayMsg);
+                        
+                        setTimeout(() => {
+                            overlayMsg.classList.add('opacity-0');
+                            setTimeout(() => overlayMsg.remove(), 300);
+                            
+                            loadScene(tId);
+                            document.getElementById('target-view-panel').classList.replace('hidden', 'flex');
+                            document.getElementById('target-view-indicator').classList.replace('hidden', 'flex');
+                            updateAdvancedToolsVisibility();
+                        }, 800);
+                        return; // Exit without resetting the normal state
+                    } else {
+                        updateAdvancedToolsVisibility();
+                    }
+                } 
+                else if (AppState.hotspotMode === 'info') {
+                    const text = document.getElementById('info-hotspot-text').value.trim();
+                    if(!text) return alert("Please enter information text in the panel.");
+                    if(!active.infoHotspots) active.infoHotspots = [];
+                    const ihs = { pitch: coords[0], yaw: coords[1], text, id: 'info_' + Date.now() };
+                    active.infoHotspots.push(ihs);
+                    viewer.addHotSpot({ pitch: ihs.pitch, yaw: ihs.yaw, cssClass: 'info-hotspot-container', createTooltipFunc: window.customInfoHotspotRenderer, createTooltipArgs: { text: ihs.text, id: ihs.id } });
+                    updateAdvancedToolsVisibility();
+                }
+                exitHotspotMode();
+            });
+
+            syncSceneMetaEditor();
+            updateBrandingUI();
+        }
+
+        // --- REAL-TIME MINIMAP DRAG, PAN & ZOOM ---
+        const mmC = document.getElementById('minimap-container');
+        const mmT = document.getElementById('minimap-transform');
+        let mmScale = 1; let mmPanX = 0; let mmPanY = 0;
+        let isDraggingMm = false; let startMmX, startMmY; let hasMovedMm = false;
+
+        function resetMinimapTransform() { mmScale = 1; mmPanX = 0; mmPanY = 0; updateMmTransform(); }
+        function updateMmTransform() { mmT.style.transform = `translate(${mmPanX}px, ${mmPanY}px) scale(${mmScale})`; }
+
+        mmC.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            mmScale += e.deltaY > 0 ? -0.1 : 0.1;
+            mmScale = Math.max(0.5, Math.min(mmScale, 4));
+            updateMmTransform();
+        });
+
+        mmC.addEventListener('mousedown', (e) => {
+            isDraggingMm = true; hasMovedMm = false;
+            startMmX = e.clientX - mmPanX; startMmY = e.clientY - mmPanY;
+            mmT.style.cursor = 'grabbing';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if(!isDraggingMm) return;
+            hasMovedMm = true;
+            mmPanX = e.clientX - startMmX; mmPanY = e.clientY - startMmY;
+            updateMmTransform();
+        });
+
+        window.addEventListener('mouseup', () => {
+            if(isDraggingMm) { isDraggingMm = false; mmT.style.cursor = 'crosshair'; }
+        });
+
+        mmT.addEventListener('click', (e) => {
+            if(hasMovedMm || AppState.isLocked || isMapLocked || !AppState.activeSceneId || AppState.hotspotMode) return;
+            const rect = mmT.getBoundingClientRect();
+            AppState.scenes.find(s => s.id === AppState.activeSceneId).marker = { x: ((e.clientX - rect.left) / rect.width) * 100, y: ((e.clientY - rect.top) / rect.height) * 100 };
+            renderMarkers();
+        });
+
+        document.getElementById('btn-lock-map').addEventListener('click', (e) => {
+            e.stopPropagation(); isMapLocked = !isMapLocked;
+            document.getElementById('map-icon-unlocked').classList.toggle('hidden'); document.getElementById('map-icon-locked').classList.toggle('hidden');
+        });
+
+        function renderMarkers() {
+            const l = document.getElementById('markers-layer'); l.innerHTML = '';
+            AppState.scenes.forEach(s => {
+                if(s.marker) {
+                    const dot = document.createElement('div');
+                    const isActive = s.id === AppState.activeSceneId;
+                    dot.className = `absolute w-3 h-3 sm:w-4 sm:h-4 -ml-1.5 -mt-1.5 sm:-ml-2 sm:-mt-2 rounded-full border-2 shadow-lg cursor-pointer ${isActive ? 'marker-active' : 'marker-inactive'}`;
+                    dot.style.left = s.marker.x + '%'; dot.style.top = s.marker.y + '%';
+                    dot.title = s.name; dot.onclick = (e) => { 
+                        e.stopPropagation(); 
+                        if(AppState.hotspotMode) return;
+                        loadScene(s.id); 
+                    };
+                    if(isActive) dot.innerHTML = `<div id="radar-cone-svg" class="radar-cone"></div>`;
+                    l.appendChild(dot);
+                }
+            });
+        }
+
+        function loopRadar() {
+            const radar = document.getElementById('radar-cone-svg');
+            if(radar && viewer && AppState.activeSceneId) {
+                const s = AppState.scenes.find(x => x.id === AppState.activeSceneId);
+                if(s) {
+                    const angle = viewer.getYaw() - (s.northOffset || 0);
+                    radar.style.transform = `rotate(${angle}deg)`;
+                }
+            }
+            requestAnimationFrame(loopRadar);
+        }
+        requestAnimationFrame(loopRadar);
+
+        // --- RADAR CALIBRATION ---
+        const calibModal = document.getElementById('calibration-modal');
+        const calibTouch = document.getElementById('calib-touch-area');
+        const calibArrow = document.getElementById('calib-arrow');
+
+        document.getElementById('btn-open-calib').addEventListener('click', () => { if(viewer && AppState.activeSceneId) calibModal.classList.replace('hidden', 'flex'); });
+        function updateCalibDial(e) {
+            const rect = calibTouch.getBoundingClientRect();
+            const cx = rect.left + rect.width/2; const cy = rect.top + rect.height/2;
+            const px = e.touches ? e.touches[0].clientX : e.clientX; const py = e.touches ? e.touches[0].clientY : e.clientY;
+            let ang = Math.atan2(py - cy, px - cx) * 180 / Math.PI; ang += 90;
+            calibArrow.style.transform = `rotate(${ang}deg)`; calibAngle = ang;
+        }
+        let isDialDragging = false;
+        calibTouch.addEventListener('mousedown', e => { isDialDragging = true; updateCalibDial(e); });
+        calibTouch.addEventListener('touchstart', e => { isDialDragging = true; updateCalibDial(e); });
+        window.addEventListener('mousemove', e => { if(isDialDragging) updateCalibDial(e); });
+        window.addEventListener('touchmove', e => { if(isDialDragging) updateCalibDial(e); });
+        window.addEventListener('mouseup', () => isDialDragging = false); window.addEventListener('touchend', () => isDialDragging = false);
+
+        document.getElementById('btn-confirm-calib').addEventListener('click', () => {
+            const active = AppState.scenes.find(s => s.id === AppState.activeSceneId);
+            if(active) { active.northOffset = viewer.getYaw() - calibAngle; active.startPitch = viewer.getPitch(); active.startYaw = viewer.getYaw(); }
+            calibModal.classList.replace('flex', 'hidden');
+        });
+
+        // --- THUMBNAIL GALLERY ---
+        let isThumbnailsOpen = false;
+        function renderThumbnails() {
+            const list = document.getElementById('thumbnails-list'); list.innerHTML = '';
+            AppState.scenes.forEach(s => {
+                const isActive = s.id === AppState.activeSceneId;
+                const btn = document.createElement('button');
+                btn.className = 'flex-shrink-0 flex flex-col items-center gap-1';
+                btn.innerHTML = `<div class="w-20 h-12 rounded-lg overflow-hidden border-2 transition-all ${isActive ? 'border-indigo-400' : 'border-white/10 hover:border-white/50'}"><img src="${s.url}" class="w-full h-full object-cover" /></div><span class="text-[9px] text-zinc-300 truncate w-20 text-center leading-none">${s.name}</span>`;
+                btn.onclick = () => { 
+                    if(AppState.hotspotMode) return;
+                    loadScene(s.id); 
+                    renderThumbnails(); 
+                };
+                list.appendChild(btn);
+            });
+        }
+        document.getElementById('btn-show-thumbnails').addEventListener('click', () => {
+            isThumbnailsOpen = !isThumbnailsOpen;
+            const bar = document.getElementById('thumbnails-bar'); const btn = document.getElementById('btn-show-thumbnails');
+            if(isThumbnailsOpen) { renderThumbnails(); bar.classList.remove('hidden'); btn.classList.add('text-indigo-400', 'border-indigo-400/50', 'bg-black/80'); btn.classList.remove('text-white', 'border-white/10'); } 
+            else { bar.classList.add('hidden'); btn.classList.remove('text-indigo-400', 'border-indigo-400/50', 'bg-black/80'); btn.classList.add('text-white', 'border-white/10'); }
+        });
+
+        document.getElementById('input-hotspot-color').addEventListener('input', (e) => AppState.hotspotColor = e.target.value);
+        document.getElementById('input-frame-enabled').addEventListener('change', (e) => { AppState.panoramaFrameEnabled = e.target.checked; updatePanoramaFrameUI(); });
+        document.getElementById('input-frame-color').addEventListener('input', (e) => { AppState.panoramaFrameColor = e.target.value; updatePanoramaFrameUI(); });
+        document.getElementById('input-frame-width').addEventListener('input', (e) => { AppState.panoramaFrameWidth = Number(e.target.value) || 0; updatePanoramaFrameUI(); });
+        document.getElementById('input-frame-margin').addEventListener('input', (e) => { AppState.panoramaFrameMargin = Number(e.target.value) || 0; updatePanoramaFrameUI(); });
+        window.addEventListener('resize', updatePanoramaFrameUI);
+        document.getElementById('btn-lock').addEventListener('click', () => {
+            AppState.isLocked = !AppState.isLocked;
+            document.getElementById('icon-unlocked').classList.toggle('hidden'); document.getElementById('icon-locked').classList.toggle('hidden');
+            document.getElementById('btn-lock').classList.toggle('text-emerald-400'); document.getElementById('btn-lock').classList.toggle('text-rose-400');
+            document.getElementById('section-plan-wrapper').classList.toggle('opacity-50'); document.getElementById('section-plan-wrapper').classList.toggle('pointer-events-none');
+            document.getElementById('btn-add-scene').classList.toggle('hidden');
+            document.querySelectorAll('.btn-delete-scene').forEach(b => b.classList.toggle('hidden'));
+            const metaEditor = document.getElementById('scene-meta-editor');
+            metaEditor.classList.toggle('opacity-50', AppState.isLocked);
+            metaEditor.classList.toggle('pointer-events-none', AppState.isLocked);
+            syncSceneMetaEditor();
+            updateAdvancedToolsVisibility();
+        });
+
+
+        // --- ADVANCED EXPORT ---
+        const modal = document.getElementById('export-modal');
+        document.getElementById('btn-export-modal').addEventListener('click', () => {
+            if(AppState.scenes.length === 0) return alert("Add at least one photo.");
+            modal.classList.replace('hidden', 'flex');
+        });
+        document.getElementById('btn-cancel-export').addEventListener('click', () => modal.classList.replace('flex', 'hidden'));
+
+        document.getElementById('btn-confirm-export').addEventListener('click', async () => {
+            modal.classList.replace('flex', 'hidden');
+            document.getElementById('export-overlay').classList.replace('hidden', 'flex');
+
+            setTimeout(async () => { 
+                try {
+                    const type = document.querySelector('input[name="exportType"]:checked').value;
+                    let filename = AppState.globalTitle.trim() ? AppState.globalTitle.trim().replace(/[^a-zA-Z0-9_\-]/g, '_') : 'Mi_Tour_Virtual';
+                    const includeLogo = document.getElementById('export-logo').checked;
+                    
+                    // PREPARE DATA (Temporarily convert Blobs to Base64 for packaging)
+                    const exportData = { scenes: JSON.parse(JSON.stringify(AppState.scenes)), plan: null, first: AppState.activeSceneId, brand: { t: AppState.globalTitle, c: AppState.titleColor, s: AppState.titleSize, l: null }, hotspotColor: AppState.hotspotColor, frame: { enabled: AppState.panoramaFrameEnabled, color: AppState.panoramaFrameColor, width: AppState.panoramaFrameWidth, margin: AppState.panoramaFrameMargin } };
+                    
+                    if(AppState.floorPlanBlob) exportData.plan = await blobToBase64(AppState.floorPlanBlob);
+                    if(includeLogo && AppState.logoBlob) exportData.brand.l = await blobToBase64(AppState.logoBlob);
+                    for(let i=0; i<AppState.scenes.length; i++) {
+                        exportData.scenes[i].url = await blobToBase64(AppState.scenes[i].blob);
+                        delete exportData.scenes[i].blob;
+                    }
+                    
+                    if(type === 'project') {
+                        if(!filename.endsWith('.html')) filename += '.html';
+                        const stObj = { ...exportData, floorPlanB64: exportData.plan, logoB64: exportData.brand.l }; 
+                        const st = `<script id="saved-state">window.SAVED_STATE = ${JSON.stringify(stObj)};<\/script>`;
+                        const blob = new Blob([window.PRISTINE_HTML.replace('</body>', st + '\n</body>')], { type: 'text/html' });
+                        const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click();
+                        
+                    } else if(type === 'zip') {
+                        document.getElementById('export-status-text').innerText = "Comprimiendo ZIP... esto puede tardar un poco.";
+                        const zip = new JSZip();
+                        const imgFolder = zip.folder("images");
+                        
+                        for(let s of exportData.scenes) {
+                            imgFolder.file(`${s.id}.jpg`, base64ToBlob(s.url));
+                            s.url = `images/${s.id}.jpg`; 
+                        }
+                        if(exportData.plan) { imgFolder.file(`plan.jpg`, base64ToBlob(exportData.plan)); exportData.plan = `images/plan.jpg`; }
+                        if(exportData.brand.l) { imgFolder.file(`logo.png`, base64ToBlob(exportData.brand.l)); exportData.brand.l = `images/logo.png`; }
+
+                        zip.file("index.html", generatePlayerHTML(exportData));
+                        const zipBlob = await zip.generateAsync({type:"blob"});
+                        const link = document.createElement('a'); link.href = URL.createObjectURL(zipBlob); link.download = filename + ".zip"; link.click();
+
+                    } else {
+                        if(!filename.endsWith('.html')) filename += '.html';
+                        const blob = new Blob([generatePlayerHTML(exportData)], { type: 'text/html' });
+                        const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click();
+                    }
+                } catch(e) {
+                    console.error(e); alert("Export error.");
+                } finally {
+                    document.getElementById('export-overlay').classList.replace('flex', 'hidden');
+                    document.getElementById('export-status-text').innerText = "Please do not close the window. This may take a moment.";
+                }
+            }, 50);
+        });
+
+        // EXPORTED PLAYER HTML
+        function generatePlayerHTML(dataObj) {
+            const dataJSON = JSON.stringify(dataObj);
+            return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>360° Virtual Tour</title>
+    <script src="https://cdn.tailwindcss.com"><\/script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"><\/script>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
+        #panorama { width: 100vw; height: 100vh; }
+        #panorama.panorama-frame-active { position: absolute; inset: auto; overflow: hidden; box-sizing: border-box; background: #000; transition: width 0.25s ease, height 0.25s ease; }
+        .pnlm-load-box { display: none !important; }
+        .pnlm-ui .pnlm-zoom-controls { left: 16px !important; right: auto !important; top: 70px !important; bottom: auto !important; margin-top: 0 !important; }
+        .pnlm-ui .pnlm-fullscreen-toggle-button { left: 16px !important; right: auto !important; top: 135px !important; bottom: auto !important; margin-top: 0 !important; }
+        .marker { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; border: 2px solid white; cursor: pointer; box-shadow: 0 0 10px rgba(0,0,0,0.5); transition: transform 0.2s; z-index: 10; }
+        .marker:hover { transform: scale(1.3); }
+        .marker-active { background: #6366f1; animation: pulse 2s infinite; z-index: 20; }
+        .marker-inactive { background: #3f3f46; opacity: 0.9; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(99,102,241,0.7); } 70% { box-shadow: 0 0 0 10px rgba(99,102,241,0); } 100% { box-shadow: 0 0 0 0 rgba(0,0,0,0); } }
+        .radar-cone { position: absolute; bottom: 50%; left: 50%; width: 160px; height: 160px; margin-left: -80px; transform-origin: bottom center; background: radial-gradient(circle at 50% 100%, rgba(250, 204, 21, 0.8) 0%, rgba(250, 204, 21, 0.4) 40%, transparent 70%); clip-path: polygon(50% 100%, 15% 0, 85% 0); pointer-events: none; z-index: 15; will-change: transform; }
+        .custom-hotspot-container { width: 60px; height: 60px; margin-left: -30px; margin-top: -30px; z-index: 20; }
+        .info-hotspot-container { width: 36px; height: 36px; margin-left: -18px; margin-top: -18px; z-index: 20; }
+
+        /* Panoramic frame: desktop only. On mobile / tablet it is shown full screen. */
+        @media (max-width: 1180px), (pointer: coarse) {
+            #panorama.panorama-frame-active {
+                position: absolute !important;
+                inset: 0 !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100vw !important;
+                height: 100vh !important;
+                transform: none !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="panorama"></div>
+    <div id="thumbnails-bar" class="absolute bottom-0 left-0 right-0 z-10 hidden bg-black/85 backdrop-blur-md border-t border-white/10 py-3 px-4"><div id="thumbnails-list" class="flex gap-3 overflow-x-auto pb-1" style="scrollbar-width:thin;"></div></div>
+    <div id="branding-widget" class="absolute bottom-4 left-4 sm:bottom-6 sm:left-6 z-10 flex items-center gap-3 pointer-events-none drop-shadow-md hidden max-w-[60vw] md:max-w-md">
+        <img id="b-logo" class="max-w-[40px] max-h-[40px] object-contain hidden shrink-0" />
+        <div class="flex flex-col drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] overflow-visible">
+            <h1 id="b-title" class="font-bold text-white leading-tight hidden break-words"></h1>
+            <div class="flex items-center gap-2 mt-0.5 pointer-events-auto">
+                <h2 id="b-subtitle" class="text-zinc-200 text-sm font-medium hidden break-words"></h2>
+                <div id="info-widget" class="relative hidden group">
+                    <button class="w-[20px] h-[20px] bg-black/50 hover:bg-black/80 backdrop-blur border border-white/20 rounded-full flex items-center justify-center text-white transition-colors outline-none shadow-lg cursor-help"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></button>
+                    <div class="absolute bottom-full left-0 mb-2 w-56 sm:w-64 p-3 bg-black/85 backdrop-blur-md border border-white/10 rounded-lg text-xs text-zinc-200 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition-opacity shadow-xl"><p id="info-text" class="leading-relaxed whitespace-pre-wrap"></p></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="minimap" class="absolute bottom-4 right-4 sm:bottom-6 sm:right-6 w-36 h-36 sm:w-64 sm:h-64 md:w-80 md:h-72 bg-black/60 backdrop-blur-md rounded-2xl border border-white/20 overflow-hidden shadow-2xl hidden">
+        <div class="absolute top-2 right-2 z-20"><button id="btn-thumbnails" onclick="toggleThumbnails()" class="p-1.5 bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500 hover:text-white rounded flex items-center justify-center transition-colors hidden" title="Gallery"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg></button></div>
+        <div class="relative w-full h-full p-1.5 sm:p-2 group"><img id="plan-img" class="w-full h-full object-contain opacity-80 group-hover:opacity-100 transition-opacity" /><div id="markers-layer" class="absolute inset-0"></div></div>
+    </div>
+    <script>
+        const d = ${dataJSON};
+        let viewer, activeId = d.first;
+
+        function applyPanoramaFrame() {
+            const pano = document.getElementById('panorama');
+            const frame = d.frame || {};
+            if(!pano || !frame.enabled) return;
+            const margin = Math.max(0, Number(frame.margin) || 0);
+            const availableW = Math.max(240, window.innerWidth - (margin * 2));
+            const availableH = Math.max(120, window.innerHeight - (margin * 2));
+            let frameW = Math.min(availableW, availableH * 2);
+            let frameH = frameW / 2;
+            if(frameH > availableH) { frameH = availableH; frameW = frameH * 2; }
+            pano.classList.add('panorama-frame-active');
+            pano.style.left = '50%';
+            pano.style.top = '50%';
+            pano.style.transform = 'translate(-50%, -50%)';
+            pano.style.width = Math.round(frameW) + 'px';
+            pano.style.height = Math.round(frameH) + 'px';
+            pano.style.border = (Math.max(0, Number(frame.width) || 0)) + 'px solid ' + (frame.color || '#ffffff');
+            pano.style.borderRadius = '14px';
+            pano.style.boxShadow = '0 24px 80px rgba(0,0,0,0.55)';
+            if(viewer && typeof viewer.resize === 'function') setTimeout(() => viewer.resize(), 60);
+        }
+        window.addEventListener('resize', applyPanoramaFrame);
+
+        window.customInfoHotspotRenderer = function(hotSpotDiv, args) {
+            hotSpotDiv.classList.add('info-hotspot-container');
+            hotSpotDiv.innerHTML = \`<div class="relative flex items-center justify-center group pointer-events-auto w-full h-full"><div class="bg-emerald-600/80 w-6 h-6 rounded-full border-2 border-white/80 shadow-[0_0_10px_rgba(16,185,129,0.5)] transition-transform duration-300 group-hover:scale-110 cursor-pointer flex items-center justify-center"><span class="text-white font-bold text-xs leading-none select-none">i</span></div><div class="info-popup absolute bottom-full mb-2 bg-zinc-900/95 border border-emerald-500/30 text-zinc-200 text-sm px-3 py-2 rounded-lg shadow-xl w-52 text-center leading-snug pointer-events-none hidden" style="left:50%;transform:translateX(-50%)">\${args.text}<div class="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent" style="border-top-color:rgba(24,24,27,0.95)"></div></div></div>\`;
+            hotSpotDiv.querySelector('div').addEventListener('click', (e) => { e.stopPropagation(); hotSpotDiv.querySelector('.info-popup').classList.toggle('hidden'); });
+        };
+
+        window.customHotspotRenderer = function(hotSpotDiv, args) {
+            hotSpotDiv.classList.add('custom-hotspot-container'); const c = args.color || '#ffffff';
+            hotSpotDiv.innerHTML = \`<div class="relative flex flex-col items-center justify-center group pointer-events-auto w-full h-full opacity-70"><div class="bg-black/60 p-2 rounded-full border-2 backdrop-blur-sm shadow-[0_0_15px_rgba(255,255,255,0.3)] transition-transform duration-300 group-hover:scale-110 cursor-pointer" style="border-color:\${c}"><svg class="w-6 h-6" fill="none" stroke="\${c}" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg></div><div class="absolute top-full mt-2 bg-sky-600/90 text-white text-[10px] font-bold px-3 py-1 rounded-full shadow-lg border border-sky-400/50 uppercase tracking-widest whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">\${args.text}</div></div>\`;
+            hotSpotDiv.querySelector('div').addEventListener('click', function(e) { e.stopPropagation();
+                let currentYaw = viewer.getYaw(); let currentPitch = viewer.getPitch();
+                let activeScene = d.scenes.find(s => s.id === activeId); let targetScene = d.scenes.find(s => s.id === args.targetId);
+                if(!targetScene) return; 
+
+                if (args.targetPitch !== undefined && args.targetYaw !== undefined) {
+                    viewer.loadScene(args.targetId, args.targetPitch, args.targetYaw, 120);
+                } else {
+                    let globalYaw = currentYaw - (activeScene.northOffset || 0);
+                    viewer.loadScene(args.targetId, currentPitch, globalYaw + (targetScene.northOffset || 0), 120);
+                }
+            });
+        };
+
+        let isThumbnailsOpen = false;
+        function renderThumbnailsBar() {
+            const list = document.getElementById('thumbnails-list'); list.innerHTML = '';
+            d.scenes.forEach(s => {
+                const btn = document.createElement('button'); btn.className = 'flex-shrink-0 flex flex-col items-center gap-1';
+                btn.innerHTML = \`<div class="w-20 h-12 rounded-lg overflow-hidden border-2 transition-all \${s.id === activeId ? 'border-indigo-400' : 'border-white/10 hover:border-white/50'}"><img src="\${s.url}" class="w-full h-full object-cover" /></div><span class="text-[9px] text-zinc-300 truncate w-20 text-center leading-none">\${s.name}</span>\`;
+                btn.onclick = () => { loadScene(s.id); renderThumbnailsBar(); }; list.appendChild(btn);
+            });
+        }
+        function toggleThumbnails() {
+            isThumbnailsOpen = !isThumbnailsOpen; const bar = document.getElementById('thumbnails-bar'); const btn = document.getElementById('btn-thumbnails');
+            if(isThumbnailsOpen) { renderThumbnailsBar(); bar.classList.remove('hidden'); btn.style.color = '#818cf8'; btn.style.borderColor = 'rgba(129,140,248,0.5)'; } 
+            else { bar.classList.add('hidden'); btn.style.color = ''; btn.style.borderColor = ''; }
+        }
+
+        function init() {
+            const conf = { "default": { "firstScene": activeId, "sceneFadeDuration": 1000, "hfov": 120 }, "scenes": {} }; const hColor = d.hotspotColor || '#ffffff';
+            d.scenes.forEach(s => {
+                const navH = (s.hotspots ||[]).map(h => ({ pitch: h.pitch, yaw: h.yaw, cssClass: "custom-hotspot-container", createTooltipFunc: window.customHotspotRenderer, createTooltipArgs: { text: h.text, targetId: h.targetId, color: hColor, targetPitch: h.targetPitch, targetYaw: h.targetYaw } }));
+                const infoH = (s.infoHotspots ||[]).map(h => ({ pitch: h.pitch, yaw: h.yaw, cssClass: "info-hotspot-container", createTooltipFunc: window.customInfoHotspotRenderer, createTooltipArgs: { text: h.text, id: h.id } }));
+                conf.scenes[s.id] = { "type": "equirectangular", "panorama": s.url, "pitch": s.startPitch || 0, "yaw": s.startYaw || 0, "hotSpots": [...navH, ...infoH] };
+            });
+            viewer = pannellum.viewer('panorama', conf);
+            applyPanoramaFrame();
+
+            if(d.plan) { document.getElementById('minimap').style.display = 'block'; document.getElementById('plan-img').src = d.plan; renderMarkers(); }
+            if(d.brand.l) { document.getElementById('b-logo').src = d.brand.l; document.getElementById('b-logo').style.display = 'block'; }
+            if(d.brand.t) { const bt = document.getElementById('b-title'); bt.innerText = d.brand.t; bt.style.color = d.brand.c; bt.className = "font-bold text-white leading-tight break-words " + d.brand.s; bt.style.display = 'block'; }
+            document.getElementById('branding-widget').style.display = 'flex';
+            if(d.scenes.length >= 2) document.getElementById('btn-thumbnails').classList.remove('hidden');
+            
+            viewer.on('scenechange', (newSceneId) => { activeId = newSceneId; renderMarkers(); updateTitle(); if(isThumbnailsOpen) renderThumbnailsBar(); });
+            updateTitle(); requestAnimationFrame(loopRadar); 
+        }
+
+        function loadScene(id) {
+            const s = d.scenes.find(x => x.id === id);
+            if(!s) return;
+            activeId = id;
+            updateTitle();
+            renderMarkers();
+            if(isThumbnailsOpen) renderThumbnailsBar();
+            if(viewer.getScene() !== id) viewer.loadScene(id, s.startPitch || 0, s.startYaw || 0, 120);
+        }
+
+        function updateTitle() {
+            const s = d.scenes.find(x => x.id === activeId);
+            const sub = document.getElementById('b-subtitle'); if(s && s.subtitle && s.subtitle.trim() !== "") { sub.innerText = s.subtitle; sub.style.display = 'block'; } else { sub.style.display = 'none'; }
+            const wInfo = document.getElementById('info-widget'); const tInfo = document.getElementById('info-text');
+            if(s && s.info && s.info.trim() !== "") { tInfo.innerText = s.info; wInfo.style.display = 'block'; } else { wInfo.style.display = 'none'; }
+        }
+
+        function renderMarkers() {
+            const l = document.getElementById('markers-layer'); l.innerHTML = '';
+            d.scenes.forEach(s => {
+                if(s.marker) {
+                    const dot = document.createElement('div'); const isAct = s.id === activeId;
+                    dot.className = 'marker ' + (isAct ? 'marker-active' : 'marker-inactive');
+                    dot.style.left = s.marker.x + '%'; dot.style.top = s.marker.y + '%';
+                    dot.title = s.name; dot.onclick = () => loadScene(s.id); 
+                    if(isAct) dot.innerHTML = \`<div id="radar-cone-svg" class="radar-cone"></div>\`; l.appendChild(dot);
+                }
+            });
+        }
+        function loopRadar() {
+            const radar = document.getElementById('radar-cone-svg');
+            if(radar && viewer) { const s = d.scenes.find(x => x.id === activeId); if(s) radar.style.transform = \`rotate(\${viewer.getYaw() - (s.northOffset || 0)}deg)\`; }
+            requestAnimationFrame(loopRadar);
+        }
+        window.onload = init;
+    <\/script>
+</body>
+</html>`;
+        }
+
+        document.getElementById('btn-show-info').addEventListener('click', () => document.getElementById('info-modal').classList.replace('hidden', 'flex'));
+
+        // --- RESTORE SAVED PROJECTS ---
+        window.addEventListener('DOMContentLoaded', () => {
+            if(window.SAVED_STATE) {
+                Object.assign(AppState, window.SAVED_STATE);
+                
+                document.getElementById('input-title').value = AppState.globalTitle || "";
+                document.getElementById('input-color').value = AppState.titleColor || "#ffffff";
+                document.getElementById('input-size').value = AppState.titleSize || "text-2xl";
+                document.getElementById('input-frame-enabled').checked = !!AppState.panoramaFrameEnabled;
+                document.getElementById('input-frame-color').value = AppState.panoramaFrameColor || "#ffffff";
+                document.getElementById('input-frame-width').value = AppState.panoramaFrameWidth ?? 8;
+                document.getElementById('input-frame-margin').value = AppState.panoramaFrameMargin ?? 24;
+                updatePanoramaFrameUI();
+
+                if(AppState.logoB64 && AppState.logoB64.startsWith('data:')) {
+                    AppState.logoBlob = base64ToBlob(AppState.logoB64);
+                    AppState.logoB64 = URL.createObjectURL(AppState.logoBlob);
+                }
+                
+                if(AppState.floorPlanB64 && AppState.floorPlanB64.startsWith('data:')) {
+                    AppState.floorPlanBlob = base64ToBlob(AppState.floorPlanB64);
+                    AppState.floorPlanB64 = URL.createObjectURL(AppState.floorPlanBlob);
+                    document.getElementById('plan-text').innerText = "Floor plan loaded";
+                    document.getElementById('minimap-img').src = AppState.floorPlanB64;
+                    document.getElementById('minimap-widget').classList.replace('hidden','flex');
+                }
+
+                if(AppState.scenes.length > 0) {
+                    AppState.scenes.forEach(s => {
+                        if(s.url && s.url.startsWith('data:')) {
+                            s.blob = base64ToBlob(s.url);
+                            s.url = URL.createObjectURL(s.blob);
+                        }
+                    });
+
+                    document.getElementById('placeholder').classList.add('hidden');
+                    document.getElementById('scene-meta-editor').classList.add('hidden');
+                    updateAdvancedToolsVisibility();
+                    
+                    const firstScene = AppState.scenes.find(s => s.id === AppState.activeSceneId) || AppState.scenes[0];
+                    initViewer(firstScene);
+                    
+                    AppState.scenes.forEach(s => {
+                        if(s.id !== firstScene.id) viewer.addScene(s.id, { "type": "equirectangular", "panorama": s.url, "pitch": s.startPitch || 0, "yaw": s.startYaw || 0, "hotSpots": formatHotspots(s.hotspots, s.infoHotspots) });
+                    });
+                    if(AppState.hotspotColor) document.getElementById('input-hotspot-color').value = AppState.hotspotColor;
+                    
+                    updateScenesList();
+                }
+                updateBrandingUI();
+            }
+        });
+    </script>
+</body>
+</html>
