@@ -29,7 +29,7 @@ You can use the tool directly from your browser without downloading anything tha
 
 ## 🛠️ How to Use (Local)
 
-1. Clone this repository or download the version in your preferred language: `index_spanish.html` or `index_english.html`.
+1. Clone this repository or download the version in your preferred language: `index.html` (English language) or `index_es.html` (Spanish language).
 2. Open it by double-clicking (it will open in Chrome, Firefox, Safari, or Edge).
 3. Update the Visual Identity (e.g., add logo, colors).
 4. You can upload a floor plan showing the property layout.
