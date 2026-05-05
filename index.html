@@ -147,21 +147,14 @@ SOFTWARE.
                             <input type="radio" name="exportType" value="player" checked class="text-indigo-500 focus:ring-indigo-500 mt-1 self-start">
                             <div>
                                 <p class="text-sm text-white font-medium">1. Single HTML File (Client)</p>
-                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Clean tour. Everything in 1 file.</p>
-                            </div>
-                        </label>
-                        <label class="flex items-center gap-3 bg-emerald-900/20 p-3 rounded-lg border border-emerald-500/20 cursor-pointer hover:border-emerald-500/50">
-                            <input type="radio" name="exportType" value="zip" class="text-emerald-500 focus:ring-emerald-500 mt-1 self-start">
-                            <div>
-                                <p class="text-sm text-emerald-400 font-medium">2. ZIP Package (For Web Server)</p>
-                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Separates photos into a folder. Prevents blocking issues.</p>
+                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Clean Tour. All in 1 file (No Sidebar - For Client)</p>
                             </div>
                         </label>
                         <label class="flex items-center gap-3 bg-indigo-900/20 p-3 rounded-lg border border-indigo-500/20 cursor-pointer hover:border-indigo-500/50">
-                            <input type="radio" name="exportType" value="project" class="text-indigo-500 focus:ring-indigo-500 mt-1 self-start">
+                            <input type="radio" name="exportType" value="admin" class="text-indigo-500 focus:ring-indigo-500 mt-1 self-start">
                             <div>
-                                <p class="text-sm text-indigo-400 font-medium">3. Editable Project (For you)</p>
-                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Save your session to continue editing tomorrow.</p>
+                                <p class="text-sm text-indigo-400 font-medium">2. Single HTML File</p>
+                                <p class="text-[10px] text-zinc-400 leading-tight mt-1">Complete Tour. All in 1 file - For Administrator (With Sidebar for editing)</p>
                             </div>
                         </label>
                     </div>
@@ -1546,30 +1539,11 @@ SOFTWARE.
                         exportData.scenes[i].url = await blobToBase64(AppState.scenes[i].blob);
                         delete exportData.scenes[i].blob;
                     }
-                    
-                    if(type === 'project') {
+                    if(type === 'admin') {
                         if(!filename.endsWith('.html')) filename += '.html';
-                        const stObj = { ...exportData, floorPlanB64: exportData.plan, logoB64: exportData.brand.l }; 
-                        const st = `<script id="saved-state">window.SAVED_STATE = ${JSON.stringify(stObj)};<\/script>`;
-                        const blob = new Blob([window.PRISTINE_HTML.replace('</body>', st + '\n</body>')], { type: 'text/html' });
+                        const projectState = createSavedProjectState(exportData);
+                        const blob = new Blob([generateEditableProjectHTML(projectState)], { type: 'text/html' });
                         const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click();
-                        
-                    } else if(type === 'zip') {
-                        document.getElementById('export-status-text').innerText = "Comprimiendo ZIP... esto puede tardar un poco.";
-                        const zip = new JSZip();
-                        const imgFolder = zip.folder("images");
-                        
-                        for(let s of exportData.scenes) {
-                            imgFolder.file(`${s.id}.jpg`, base64ToBlob(s.url));
-                            s.url = `images/${s.id}.jpg`; 
-                        }
-                        if(exportData.plan) { imgFolder.file(`plan.jpg`, base64ToBlob(exportData.plan)); exportData.plan = `images/plan.jpg`; }
-                        if(exportData.brand.l) { imgFolder.file(`logo.png`, base64ToBlob(exportData.brand.l)); exportData.brand.l = `images/logo.png`; }
-
-                        zip.file("index.html", generatePlayerHTML(exportData));
-                        const zipBlob = await zip.generateAsync({type:"blob"});
-                        const link = document.createElement('a'); link.href = URL.createObjectURL(zipBlob); link.download = filename + ".zip"; link.click();
-
                     } else {
                         if(!filename.endsWith('.html')) filename += '.html';
                         const blob = new Blob([generatePlayerHTML(exportData)], { type: 'text/html' });
@@ -1583,6 +1557,52 @@ SOFTWARE.
                 }
             }, 50);
         });
+
+        function createSavedProjectState(exportData) {
+            const frame = exportData.frame || {};
+            const brand = exportData.brand || {};
+            return {
+                isLocked: false,
+                floorPlanB64: exportData.plan || null,
+                floorPlanBlob: null,
+                scenes: (exportData.scenes || []).map(s => ({ ...s })),
+                activeSceneId: exportData.first || ((exportData.scenes && exportData.scenes[0]) ? exportData.scenes[0].id : null),
+                maxScenes: AppState.maxScenes || 30,
+                logoB64: brand.l || null,
+                logoBlob: null,
+                globalTitle: brand.t || "",
+                titleColor: brand.c || "#ffffff",
+                titleSize: brand.s || "text-2xl",
+                hotspotColor: exportData.hotspotColor || "#ffffff",
+                panoramaFrameEnabled: !!frame.enabled,
+                panoramaFrameColor: frame.color || "#ffffff",
+                panoramaFrameWidth: frame.width ?? 8,
+                panoramaFrameMargin: frame.margin ?? 24,
+                hotspotMode: null,
+                pendingHotspot: null,
+                forceSidebarOpen: true
+            };
+        }
+
+        function generateEditableProjectHTML(stateObj) {
+            const docClone = document.documentElement.cloneNode(true);
+            docClone.querySelectorAll('script#saved-state').forEach(el => el.remove());
+
+            const exportOverlay = docClone.querySelector('#export-overlay');
+            if(exportOverlay) { exportOverlay.classList.remove('flex'); exportOverlay.classList.add('hidden'); }
+            const exportModal = docClone.querySelector('#export-modal');
+            if(exportModal) { exportModal.classList.remove('flex'); exportModal.classList.add('hidden'); }
+            const dragOverlay = docClone.querySelector('#drag-overlay');
+            if(dragOverlay) dragOverlay.classList.add('hidden');
+
+            const savedStateScript = `<script id="saved-state">window.SAVED_STATE = ${JSON.stringify(stateObj)};<\/script>`;
+            let html = '<!DOCTYPE html>\n' + docClone.outerHTML;
+            const closingBodyIndex = html.lastIndexOf('</body>');
+            if(closingBodyIndex !== -1) {
+                return html.slice(0, closingBodyIndex) + savedStateScript + '\n' + html.slice(closingBodyIndex);
+            }
+            return html + savedStateScript;
+        }
 
         // EXPORTED PLAYER HTML
         function generatePlayerHTML(dataObj) {
@@ -1779,6 +1799,20 @@ SOFTWARE.
         // --- RESTORE SAVED PROJECTS ---
         window.addEventListener('DOMContentLoaded', () => {
             if(window.SAVED_STATE) {
+                if(window.SAVED_STATE.brand) {
+                    window.SAVED_STATE.globalTitle = window.SAVED_STATE.globalTitle ?? window.SAVED_STATE.brand.t ?? "";
+                    window.SAVED_STATE.titleColor = window.SAVED_STATE.titleColor ?? window.SAVED_STATE.brand.c ?? "#ffffff";
+                    window.SAVED_STATE.titleSize = window.SAVED_STATE.titleSize ?? window.SAVED_STATE.brand.s ?? "text-2xl";
+                    window.SAVED_STATE.logoB64 = window.SAVED_STATE.logoB64 ?? window.SAVED_STATE.brand.l ?? null;
+                }
+                if(window.SAVED_STATE.frame) {
+                    window.SAVED_STATE.panoramaFrameEnabled = window.SAVED_STATE.panoramaFrameEnabled ?? !!window.SAVED_STATE.frame.enabled;
+                    window.SAVED_STATE.panoramaFrameColor = window.SAVED_STATE.panoramaFrameColor ?? window.SAVED_STATE.frame.color ?? "#ffffff";
+                    window.SAVED_STATE.panoramaFrameWidth = window.SAVED_STATE.panoramaFrameWidth ?? window.SAVED_STATE.frame.width ?? 8;
+                    window.SAVED_STATE.panoramaFrameMargin = window.SAVED_STATE.panoramaFrameMargin ?? window.SAVED_STATE.frame.margin ?? 24;
+                }
+                window.SAVED_STATE.activeSceneId = window.SAVED_STATE.activeSceneId ?? window.SAVED_STATE.first ?? null;
+                window.SAVED_STATE.floorPlanB64 = window.SAVED_STATE.floorPlanB64 ?? window.SAVED_STATE.plan ?? null;
                 Object.assign(AppState, window.SAVED_STATE);
                 
                 document.getElementById('input-title').value = AppState.globalTitle || "";
@@ -1826,6 +1860,12 @@ SOFTWARE.
                     updateScenesList();
                 }
                 updateBrandingUI();
+                if(window.SAVED_STATE.forceSidebarOpen) {
+                    sidebarOpen = true;
+                    sidebar.classList.remove('translate-x-full');
+                    sidebar.style.marginRight = "0";
+                    setTimeout(updatePanoramaFrameUI, 320);
+                }
             }
         });
     </script>
