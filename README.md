@@ -18,8 +18,7 @@ Ideal for real estate agents, photographers, architects, or anyone looking to sh
 * **🎨 Brand Customization:** Upload your own logo, add global titles, room descriptions, and adjust element colors to match your corporate identity.
 * **💾 Multiple Export Formats:**
   1. **Single HTML File:** Export a clean, single-file tour ready to send via WhatsApp or email.
-  2. **ZIP Package:** Generate an optimized package to upload to your web server (loading images separately for better performance).
-  3. **Editable Project:** Save your current work session and load it another day to continue editing.
+  2. **Editable Project:** Export Admin. Complete Tour. All in 1 file - For Administrator (With Sidebar for editing)
 
 ## 🚀 Demo and Direct Use
 
