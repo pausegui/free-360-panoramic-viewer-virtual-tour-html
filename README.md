@@ -74,3 +74,9 @@ This project would not be possible without the following incredible open-source 
 * **[Pannellum](https://pannellum.org/)**: Copyright (c) Matthew Petroff. MIT License. The main engine for panoramic image rendering.
 * **[JSZip](https://stuk.github.io/jszip/)**: Copyright (c) Stuart Knightley. MIT License. Used for compression and packaging of exported tours.
 * **[Tailwind CSS](https://tailwindcss.com/)**: Copyright (c) Tailwind Labs, Inc. MIT License. Used for the graphical interface.
+
+## Credits
+
+This project was developed by **Pau Segui** in collaboration with **[OVACEN](https://ovacen.com/en/ "Digital newspaper")**. 
+
+* Based on the following [Reference article](https://ovacen.com/en/create-panoramic-images-ai-free-virtual-tours/).
